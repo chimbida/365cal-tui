@@ -4,7 +4,7 @@ Welcome to `365cal-tui`, a terminal-based calendar viewer for your Office 365 ac
 
 ## What is Vibe Coding?
 
-It's what happens when a developer has an idea and uses a friendly AI as a co-pilot to bring it to life, iterating and building features based on conversation and, well, good vibes. This entire application was built from scratch, piece by piece, through a collaborative dialogue with **Google's Gemini 1.5 Pro**.
+It's what happens when a developer has an idea and uses a friendly AI as a co-pilot to bring it to life, iterating and building features based on conversation and, well, good vibes. This entire application was built from scratch, piece by piece, through a collaborative dialogue with **Google's Gemini 2.5 Pro**.
 
 The goal was simple: create a fast, keyboard-driven, and visually pleasing way to check your Microsoft 365 calendar without ever leaving the terminal.
 
