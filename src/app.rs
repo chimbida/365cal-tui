@@ -8,12 +8,12 @@ pub struct Transition {
     pub duration: StdDuration,
 }
 
-#[derive(Clone, Copy)] // Adicionado Copy para simplificar
+#[derive(Clone, Copy)]
 pub enum EventViewMode {
     List,
     Month,
     Week,
-    WorkWeek, // Novo modo de visualização
+    WorkWeek,
 }
 
 pub enum CurrentView {
@@ -86,14 +86,14 @@ impl App {
         }
     }
 
-    pub fn start_transition(&mut self) {
+    // CORRECTION: The function now accepts a duration in milliseconds.
+    pub fn start_transition(&mut self, ms: u64) {
         self.transition = Some(Transition {
             start: Instant::now(),
-            duration: StdDuration::from_millis(300),
+            duration: StdDuration::from_millis(ms),
         });
     }
     
-    // Atualiza o ciclo de visualizações
     pub fn toggle_event_view(&mut self) {
         self.event_view_mode = match self.event_view_mode {
             EventViewMode::List => EventViewMode::Month,
@@ -101,7 +101,7 @@ impl App {
             EventViewMode::Week => EventViewMode::WorkWeek,
             EventViewMode::WorkWeek => EventViewMode::List,
         };
-        self.start_transition();
+        self.start_transition(300);
     }
 
     pub fn next_month(&mut self) {

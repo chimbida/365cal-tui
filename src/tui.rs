@@ -1,5 +1,5 @@
 use crate::{
-    app::{App, ColorEvent, CurrentView, EventViewMode, Transition},
+    app::{App, ColorEvent, CurrentView, EventViewMode},
     api::list_events,
     ui::{ui, Theme},
     AppEvent,
@@ -10,7 +10,7 @@ use futures::future::join_all;
 use log::{error, info};
 use ratatui::{backend::CrosstermBackend, Terminal};
 use std::io;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tokio::sync::mpsc;
 
 async fn refresh_events(app: &mut App) {
@@ -66,14 +66,11 @@ pub async fn run_app(
 ) -> io::Result<()> {
     let theme = Theme::catppuccin_mocha();
 
-    if !app.calendars.is_empty() {
+    if !app.calendars.is_empty() && app.current_calendar_id.is_none() {
         refresh_events(app).await;
     }
 
-    app.transition = Some(Transition {
-        start: Instant::now(),
-        duration: Duration::from_millis(500),
-    });
+    app.start_transition(500);
 
     loop {
         terminal.draw(|f| ui(f, app, &theme))?;
@@ -111,7 +108,7 @@ pub async fn run_app(
                                     app.current_calendar_id = Some(app.calendars[calendar_index].calendar.id.clone());
                                 }
                                 app.current_view = CurrentView::Events;
-                                app.start_transition();
+                                app.start_transition(300);
                                 needs_refresh = true; 
                             }
                         }
@@ -123,7 +120,7 @@ pub async fn run_app(
                             app.current_view = CurrentView::Calendars;
                             app.event_view_mode = EventViewMode::List;
                             app.displayed_date = Local::now().date_naive(); 
-                            app.start_transition();
+                            app.start_transition(300);
                         }
                         KeyCode::Char('r') => needs_refresh = true,
                         KeyCode::Tab => app.toggle_event_view(),
@@ -132,13 +129,11 @@ pub async fn run_app(
                                 if app.get_selected_event().is_some() {
                                     app.detail_view_scroll = 0;
                                     app.current_view = CurrentView::EventDetail;
-                                    app.start_transition();
                                 }
                             }
                         }
                         KeyCode::Down => app.next_item(),
                         KeyCode::Up => app.previous_item(),
-                        // A navegação de semana agora se aplica a ambas as visões
                         KeyCode::Left => {
                             match app.event_view_mode {
                                 EventViewMode::List | EventViewMode::Month => app.previous_month(),
@@ -159,7 +154,7 @@ pub async fn run_app(
                         KeyCode::Char('q') => return Ok(()),
                         KeyCode::Char('b') => {
                             app.current_view = CurrentView::Events;
-                            app.start_transition();
+                            app.start_transition(300);
                         }
                         KeyCode::Down => app.scroll_down(),
                         KeyCode::Up => app.scroll_up(),
@@ -186,7 +181,6 @@ pub async fn run_app(
     }
 }
 
-// Atualizado para lidar com o novo modo de visualização
 fn get_view_date_range(app: &App) -> (DateTime<Utc>, DateTime<Utc>) {
     let to_utc = |naive_date: NaiveDate| naive_date.and_hms_opt(0, 0, 0).unwrap().and_local_timezone(Utc).unwrap();
 

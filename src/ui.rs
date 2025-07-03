@@ -1,10 +1,11 @@
-use crate::app::{App, CurrentView, EventViewMode}; // Adicionado ColorCalendar, ColorEvent
+use crate::app::{App, CurrentView, EventViewMode};
 use chrono::{Datelike, DateTime, Duration as ChronoDuration, Local, NaiveDateTime, Utc, Weekday};
 use ratatui::{
+    buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style, Stylize},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap},
+    widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Widget, Wrap},
     Frame,
 };
 
@@ -96,7 +97,6 @@ pub fn ui(f: &mut Frame, app: &mut App, theme: &Theme) {
     match app.current_view {
         CurrentView::Calendars => draw_calendar_list(f, app, content_area, theme),
         CurrentView::Events | CurrentView::EventDetail => {
-            // CORREÇÃO: Copiamos o nome para uma nova String, liberando o 'app'
             let calendar_name = app.current_calendar_id.as_ref()
                 .and_then(|id| app.calendars.iter().find(|c| &c.calendar.id == id))
                 .map_or("All Calendars".to_string(), |c| c.calendar.name.clone());
@@ -129,6 +129,33 @@ pub fn ui(f: &mut Frame, app: &mut App, theme: &Theme) {
     if let CurrentView::EventDetail = app.current_view {
         let area = centered_rect(80, 80, f.size());
         draw_event_detail_view(f, app, area, theme);
+    }
+
+    if let Some(transition) = &app.transition {
+        let progress = transition.start.elapsed().as_secs_f32() / transition.duration.as_secs_f32();
+        if progress < 1.0 {
+            f.render_widget(DissolveEffect::new(progress), f.size());
+        }
+    }
+}
+
+struct DissolveEffect { progress: f32 }
+impl DissolveEffect { fn new(progress: f32) -> Self { Self { progress } } }
+impl Widget for DissolveEffect {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        let chars = ['█', '▇', '▆', '▅', '▄', '▃', '▂', ' '];
+        let char_count = chars.len() as f32;
+        for y in area.top()..area.bottom() {
+            for x in area.left()..area.right() {
+                let hash = ((x as u32).wrapping_mul(31) ^ (y as u32).wrapping_mul(17)) % 100;
+                let hash_f32 = hash as f32 / 100.0;
+                if hash_f32 > self.progress {
+                    let char_index = ((hash_f32 - self.progress) * char_count).floor() as usize;
+                    let char_index = char_index.min(chars.len() - 1);
+                    buf.get_mut(x, y).set_char(chars[char_index]);
+                }
+            }
+        }
     }
 }
 

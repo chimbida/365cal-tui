@@ -1,6 +1,6 @@
 # 🚀 365cal-tui 🚀
 
-Welcome to `365cal-tui`, a terminal-based calendar viewer for your Office 365 account, conjured into existence through the power of **Vibe Coding**!
+Welcome to `365cal-tui`, a terminal-based calendar viewer for your Microsoft 365 account, conjured into existence through the power of **Vibe Coding**!
 
 ## What is Vibe Coding?
 
@@ -10,13 +10,13 @@ The goal was simple: create a fast, keyboard-driven, and visually pleasing way t
 
 ## ✨ Features
 
-- **Blazing Fast TUI:** Built with Rust 🦀 and `ratatui` for a snappy, responsive terminal interface.
+- **Modern TUI:** Built with Rust 🦀 and `ratatui` for a snappy, responsive terminal interface.
 - **Secure Microsoft 365 Login:** Uses the proper OAuth2 flow to connect to your account. Your credentials are never stored!
 - **Persistent Sessions:** Saves a secure refresh token in your operating system's native keyring (macOS Keychain, Windows Credential Manager, etc.), so you only have to log in through the browser once.
 - **Multiple Calendar Support:**
   - View a list of all your calendars.
   - An "All Calendars" view that aggregates events from all sources.
-  - **Color-coded events** to easily distinguish which calendar an event belongs to.
+  - **Color-coded calendars and events** to easily distinguish which calendar an event belongs to.
 - **Multiple Event Views:**
   - **List View:** A classic, dense list of upcoming events.
   - **Month View:** A traditional grid-based monthly calendar.
@@ -30,14 +30,13 @@ The goal was simple: create a fast, keyboard-driven, and visually pleasing way t
   - A live clock and date display in the header.
   - Beautiful [Catppuccin Mocha](https://github.com/catppuccin) color theme.
   - Glyphs and icons for a modern look (requires a [Nerd Font](https://www.nerdfonts.com/)).
-  - A popup for viewing event details, including description and attendees.
-  - Scrollable popups for long event descriptions.
+  - A popup for viewing event details, with scrolling for long descriptions.
   - Smooth dissolve transitions between views.
 - **Configurable & Smart:**
   - Auto-refreshes events periodically (configurable interval).
   - Manual refresh key (`r`).
   - External configuration file for your `client_id`.
-  - Debug logging to a file (`365cal-tui.log`).
+  - Optional debug logging.
 
 ## 🚀 Getting Started
 
@@ -77,22 +76,22 @@ This is the most important part! To allow the app to access your calendar, you m
 
 1.  Create the application's configuration directory. In your terminal, run:
     ```bash
+    # On Linux or macOS
     mkdir -p ~/.config/365cal-tui
     ```
-2.  Create a new file inside that directory named `Settings.toml`:
-    ```bash
-    # For Linux/macOS
-    touch ~/.config/365cal-tui/Settings.toml
-    ```
+2.  Create a new file inside that directory named `Settings.toml`.
 3.  Open this new file and add your **Application (client) ID** that you copied from the Azure portal:
 
     ```toml
-    # ~/.config/365cal-tui/Settings.toml
+    # File location: ~/.config/365cal-tui/Settings.toml
 
     client_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 
     # Optional: time for automatic refresh in minutes (defaults to 5)
     refresh_interval_minutes = 15
+
+    # Optional: enable logging to a file for debugging (defaults to false)
+    enable_debug_log = false
     ```
 
 ### 🛠️ Building and Running
@@ -109,6 +108,22 @@ This is the most important part! To allow the app to access your calendar, you m
     ```
     The executable will be located at `./target/release/365cal-tui`. You can copy this file anywhere you like!
 
+### ✍️ Debugging
+
+Logging is disabled by default. To enable it, you can either:
+
+1.  **Use the command-line flag:**
+    ```bash
+    # When running with cargo
+    cargo run -- -d
+    # Or with the compiled binary
+    ./target/release/365cal-tui --debug
+    ```
+2.  **Use the configuration file:**
+    - Set `enable_debug_log = true` in your `Settings.toml`.
+
+When enabled, a `365cal-tui.log` file will be created in the project directory with detailed information.
+
 ## 📦 Dependencies
 
 This project stands on the shoulders of giants. Key dependencies include:
@@ -120,7 +135,9 @@ This project stands on the shoulders of giants. Key dependencies include:
 - `keyring` for securely storing the session token.
 - `chrono` for all things date and time.
 - `config` & `dirs` for easy configuration.
+- `clap` for command-line argument parsing.
 - `log` & `simple_logging` for file-based logging.
+- `futures` for running parallel API calls.
 
 ## 📜 License
 
