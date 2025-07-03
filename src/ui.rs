@@ -1,4 +1,4 @@
-use crate::app::{App, CurrentView, EventViewMode, ColorCalendar, ColorEvent}; // Adicionado ColorCalendar, ColorEvent
+use crate::app::{App, CurrentView, EventViewMode}; // Adicionado ColorCalendar, ColorEvent
 use chrono::{Datelike, DateTime, Duration as ChronoDuration, Local, NaiveDateTime, Utc, Weekday};
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
