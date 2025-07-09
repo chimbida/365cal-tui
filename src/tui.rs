@@ -7,12 +7,13 @@ use crate::{
 use chrono::{Datelike, Duration as ChronoDuration, Local, NaiveDate, Utc, Weekday, DateTime};
 use crossterm::event::{self, Event as CEvent, KeyCode};
 use futures::future::join_all;
-use log::{error, info};
+use log::{error, info, warn};
 use ratatui::{backend::CrosstermBackend, Terminal};
 use std::io;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
+/// Asynchronously fetches events and handles token refresh logic.
 async fn refresh_events(app: &mut App) {
     let calendars_to_fetch = if let Some(id) = &app.current_calendar_id {
         app.calendars.iter().filter(|c| c.calendar.id == *id).cloned().collect()
@@ -23,35 +24,53 @@ async fn refresh_events(app: &mut App) {
     let (start_date, end_date) = get_view_date_range(app);
     info!("Refreshing events for {} calendars...", calendars_to_fetch.len());
 
-    let futures = calendars_to_fetch.into_iter().map(|color_cal| {
-        let token = app.access_token.clone();
-        async move {
-            match list_events(&token, &color_cal.calendar.id, start_date, end_date).await {
-                Ok(events) => {
-                    let color_events = events.into_iter().map(|event| ColorEvent {
-                        event,
-                        color: color_cal.color,
-                    }).collect::<Vec<_>>();
-                    Ok(color_events)
-                }
-                Err(e) => Err(e),
+    // --- NEW LOGIC: API Call with Retry-on-Refresh ---
+    let mut futures = Vec::new();
+    for color_cal in &calendars_to_fetch {
+        futures.push(list_events(&app.access_token, &color_cal.calendar.id, start_date, end_date));
+    }
+    let mut results = join_all(futures).await;
+
+    // Check if any of the results failed due to an authorization error.
+    let needs_token_refresh = results.iter().any(|res| {
+        if let Err(err) = res {
+            if let Some(req_err) = err.downcast_ref::<reqwest::Error>() {
+                return req_err.status() == Some(reqwest::StatusCode::UNAUTHORIZED);
             }
         }
+        false
     });
 
-    let results = join_all(futures).await;
-
+    // If a token refresh is needed, attempt it and retry the API calls.
+    if needs_token_refresh {
+        warn!("Access token expired or invalid. Attempting to refresh...");
+        if app.refresh_auth_token().await.is_ok() {
+            info!("Token refreshed successfully. Retrying API calls...");
+            let retry_futures = calendars_to_fetch.iter().map(|color_cal| {
+                list_events(&app.access_token, &color_cal.calendar.id, start_date, end_date)
+            });
+            results = join_all(retry_futures).await;
+        } else {
+            error!("Failed to refresh token. User might need to log in again.");
+            return; // Stop processing if refresh fails.
+        }
+    }
+    
+    // Process the final results.
     let mut all_events: Vec<ColorEvent> = Vec::new();
-    for result in results {
+    for (i, result) in results.into_iter().enumerate() {
         match result {
-            Ok(events) => all_events.extend(events),
+            Ok(events) => {
+                let color = calendars_to_fetch[i].color;
+                all_events.extend(events.into_iter().map(|event| ColorEvent { event, color }));
+            }
             Err(e) => error!("Error fetching events for a calendar: {}", e),
         }
     }
 
     all_events.sort_by(|a, b| a.event.start.date_time.cmp(&b.event.start.date_time));
-    
     app.events = all_events;
+
     if !app.events.is_empty() {
         app.event_list_state.select(Some(0));
     } else {
@@ -59,6 +78,7 @@ async fn refresh_events(app: &mut App) {
     }
 }
 
+/// The main application loop. Handles events and updates the app state.
 pub async fn run_app(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     app: &mut App,
@@ -66,7 +86,7 @@ pub async fn run_app(
 ) -> io::Result<()> {
     let theme = Theme::catppuccin_mocha();
 
-    if !app.calendars.is_empty() && app.current_calendar_id.is_none() {
+    if !app.calendars.is_empty() {
         refresh_events(app).await;
     }
 

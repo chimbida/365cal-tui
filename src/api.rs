@@ -18,8 +18,18 @@ struct CalendarListResponse {
 #[serde(rename_all = "camelCase")]
 pub struct DateTimeTimeZone {
     pub date_time: String,
-    // The timezone name (e.g., "UTC") is captured but not used in our formatting logic.
     pub _time_zone: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GraphEvent {
+    pub subject: String,
+    pub start: DateTimeTimeZone,
+    pub end: DateTimeTimeZone,
+    #[serde(default)]
+    pub body: Option<ItemBody>,
+    #[serde(default)]
+    pub attendees: Vec<Attendee>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -37,31 +47,19 @@ pub struct EmailAddress {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Attendee {
-    // This is optional because some attendees (like meeting rooms) might not have an email.
     pub email_address: Option<EmailAddress>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct GraphEvent {
-    pub subject: String,
-    pub start: DateTimeTimeZone,
-    pub end: DateTimeTimeZone,
-    // These fields are optional because the API might not return them for all events.
-    #[serde(default)]
-    pub body: Option<ItemBody>,
-    #[serde(default)]
-    pub attendees: Vec<Attendee>,
 }
 
 #[derive(Debug, Deserialize)]
 struct EventListResponse {
     value: Vec<GraphEvent>,
+    #[serde(rename = "@odata.nextLink")]
+    next_link: Option<String>,
 }
 
 
 // --- API Call Functions ---
 
-/// Fetches the list of all calendars for the authenticated user.
 pub async fn list_calendars(access_token: &str) -> Result<Vec<GraphCalendar>, Box<dyn std::error::Error>> {
     let client = reqwest::Client::new();
     let response = client
@@ -73,8 +71,6 @@ pub async fn list_calendars(access_token: &str) -> Result<Vec<GraphCalendar>, Bo
     Ok(calendar_list.value)
 }
 
-/// Fetches events for a specific calendar within a given date range.
-/// Uses the `/calendarview` endpoint which is optimized for time-window queries.
 pub async fn list_events(
     access_token: &str,
     calendar_id: &str,
@@ -82,38 +78,62 @@ pub async fn list_events(
     end_date: DateTime<Utc>,
 ) -> Result<Vec<GraphEvent>, Box<dyn std::error::Error>> {
     let client = reqwest::Client::new();
-    
-    // Format dates into the ISO 8601 strings required by the API.
-    let start_str = start_date.to_rfc3339();
-    let end_str = end_date.to_rfc3339();
+    let mut all_events = Vec::new();
 
+    // Base URL without query parameters
     let base_url = format!(
         "https://graph.microsoft.com/v1.0/me/calendars/{}/calendarview",
         calendar_id
     );
-    
-    // Request the specific fields we need to keep the response size small.
-    let select_fields = "subject,start,end,body,attendees".to_string();
 
-    let response = client
+    // Parameters for the initial request
+    let start_str = start_date.to_rfc3339();
+    let end_str = end_date.to_rfc3339();
+    let select_fields = "subject,start,end,body,attendees".to_string();
+    let orderby_field = "start/dateTime".to_string();
+
+    // Build the first request using .query() for proper URL encoding
+    let initial_response = client
         .get(&base_url)
         .bearer_auth(access_token)
         .query(&[
             ("startDateTime", &start_str),
             ("endDateTime", &end_str),
             ("$select", &select_fields),
-            ("$orderby", &"start/dateTime".to_string()),
+            ("$orderby", &orderby_field),
         ])
         .send()
         .await?;
-        
-    let text = response.text().await?;
-    
-    // Attempt to deserialize the JSON response.
-    let event_list: EventListResponse = serde_json::from_str(&text).map_err(|e| {
-        log::error!("Failed to decode JSON: {}. JSON received: {}", e, text);
-        e // Return the original serde error.
+
+    // Process the first page of results
+    let text = initial_response.text().await?;
+    // CORRECTION: Removed the unnecessary `mut` keyword.
+    let event_response: EventListResponse = serde_json::from_str(&text).map_err(|e| {
+        log::error!("Failed to decode JSON on first page: {}. JSON received: {}", e, text);
+        e
     })?;
 
-    Ok(event_list.value)
+    all_events.extend(event_response.value);
+    let mut next_url = event_response.next_link;
+
+    // Loop for subsequent pages using the nextLink provided by the API
+    while let Some(url) = next_url {
+        log::info!("Fetching next event page from: {}", url);
+        let response = client
+            .get(&url)
+            .bearer_auth(access_token)
+            .send()
+            .await?;
+
+        let text = response.text().await?;
+        let event_response: EventListResponse = serde_json::from_str(&text).map_err(|e| {
+            log::error!("Failed to decode JSON on paginated request: {}. JSON received: {}", e, text);
+            e
+        })?;
+
+        all_events.extend(event_response.value);
+        next_url = event_response.next_link;
+    }
+
+    Ok(all_events)
 }

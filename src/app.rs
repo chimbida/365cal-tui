@@ -1,14 +1,21 @@
 use crate::api::{GraphCalendar, GraphEvent};
 use chrono::{Datelike, Duration, Local, NaiveDate};
-use ratatui::{style::Color, widgets::ListState};
-use std::time::{Instant, Duration as StdDuration};
+use oauth2::{
+    basic::BasicClient, reqwest::async_http_client, AuthUrl, ClientId, RedirectUrl,
+    TokenResponse, TokenUrl,
+};
+use ratatui::style::Color;
+use ratatui::widgets::ListState;
+use std::time::{Duration as StdDuration, Instant};
 
+/// Represents the state of a view transition animation.
 pub struct Transition {
     pub start: Instant,
     pub duration: StdDuration,
 }
 
-#[derive(Clone, Copy)]
+/// The different views available for displaying events.
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum EventViewMode {
     List,
     Month,
@@ -16,13 +23,17 @@ pub enum EventViewMode {
     WorkWeek,
 }
 
+/// The main screens of the application.
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum CurrentView {
     Calendars,
     Events,
     EventDetail,
 }
 
+/// Holds the entire state of the application.
 pub struct App {
+    pub client_id: String,
     pub access_token: String,
     pub calendars: Vec<ColorCalendar>,
     pub events: Vec<ColorEvent>,
@@ -36,6 +47,7 @@ pub struct App {
     pub transition: Option<Transition>,
 }
 
+// CORRECTION: These structs are now public so other modules can use them.
 #[derive(Clone)]
 pub struct ColorCalendar {
     pub calendar: GraphCalendar,
@@ -48,8 +60,9 @@ pub struct ColorEvent {
     pub color: Color,
 }
 
+
 impl App {
-    pub fn new(access_token: String, calendars: Vec<GraphCalendar>) -> Self {
+    pub fn new(client_id: String, access_token: String, calendars: Vec<GraphCalendar>) -> Self {
         let mut calendar_list_state = ListState::default();
         calendar_list_state.select(Some(0));
         
@@ -72,6 +85,7 @@ impl App {
             .collect();
         
         Self {
+            client_id,
             access_token,
             calendars: color_calendars,
             events: vec![],
@@ -86,7 +100,35 @@ impl App {
         }
     }
 
-    // CORRECTION: The function now accepts a duration in milliseconds.
+    fn create_oauth_client(&self) -> BasicClient {
+        let client_id = ClientId::new(self.client_id.clone());
+        let auth_url = AuthUrl::new("https://login.microsoftonline.com/common/oauth2/v2.0/authorize".to_string()).unwrap();
+        let token_url = Some(TokenUrl::new("https://login.microsoftonline.com/common/oauth2/v2.0/token".to_string()).unwrap());
+        let redirect_url = RedirectUrl::new("http://localhost:8080".to_string()).unwrap();
+        
+        BasicClient::new(client_id, None, auth_url, token_url)
+            .set_redirect_uri(redirect_url)
+    }
+
+    pub async fn refresh_auth_token(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(refresh_token) = crate::auth::load_refresh_token() {
+            let client = self.create_oauth_client();
+            let token_result = client
+                .exchange_refresh_token(&refresh_token)
+                .request_async(async_http_client)
+                .await;
+            
+            if let Ok(refreshed_token) = token_result {
+                self.access_token = refreshed_token.access_token().secret().clone();
+                if let Some(new_refresh_token) = refreshed_token.refresh_token() {
+                    crate::auth::save_refresh_token(new_refresh_token.secret())?;
+                }
+                return Ok(());
+            }
+        }
+        Err("Failed to refresh token.".into())
+    }
+
     pub fn start_transition(&mut self, ms: u64) {
         self.transition = Some(Transition {
             start: Instant::now(),
@@ -132,9 +174,7 @@ impl App {
             CurrentView::Events => {
                 if let EventViewMode::List = self.event_view_mode {
                     (&mut self.event_list_state, self.events.len())
-                } else {
-                    return;
-                }
+                } else { return; }
             }
             _ => return,
         };
@@ -150,9 +190,7 @@ impl App {
             CurrentView::Events => {
                 if let EventViewMode::List = self.event_view_mode {
                     (&mut self.event_list_state, self.events.len())
-                } else {
-                    return;
-                }
+                } else { return; }
             }
             _ => return,
         };

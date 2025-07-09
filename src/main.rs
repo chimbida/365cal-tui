@@ -9,7 +9,6 @@ use std::io;
 use tokio::sync::mpsc;
 use tokio::time::{self, Duration};
 
-// Module declarations
 mod app;
 mod ui;
 mod tui;
@@ -17,26 +16,21 @@ mod config;
 mod auth;
 mod api;
 
-// Internal application events
 pub enum AppEvent {
     Refresh,
 }
 
-/// A TUI to view your Microsoft 365 calendars, built with Rust and Gemini.
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Cli {
-    /// Enable debug logging to a file (365cal-tui.log)
     #[arg(short, long)]
     debug: bool,
 }
 
-// CORREÇÃO: A assinatura da função main retorna o tipo de erro genérico correto.
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
     
-    // CORREÇÃO: O tratamento de erro foi ajustado para funcionar com `?`.
     let settings = config::load_config().map_err(|e| {
         println!("ERROR: Could not find or read the configuration file.");
         println!("Please ensure 'Settings.toml' exists at ~/.config/365cal-tui/");
@@ -65,12 +59,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
+    // Guardamos o client_id para passá-lo para o AppState
+    let client_id_for_app = settings.client_id.clone();
     let access_token = auth::authenticate(settings.client_id).await?;
 
     info!("Fetching calendars...");
     let calendars = api::list_calendars(&access_token).await?;
     
-    let mut app = app::App::new(access_token, calendars);
+    // CORREÇÃO: Passando o client_id para o construtor do App
+    let mut app = app::App::new(client_id_for_app, access_token, calendars);
 
     enable_raw_mode()?;
     let mut stdout = io::stdout();

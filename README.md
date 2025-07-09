@@ -17,8 +17,9 @@ The goal was simple: create a fast, keyboard-driven, and visually pleasing way t
   - View a list of all your calendars.
   - An "All Calendars" view that aggregates events from all sources.
   - **Color-coded calendars and events** to easily distinguish which calendar an event belongs to.
+  - A dynamic color legend appears when viewing "All Calendars".
 - **Multiple Event Views:**
-  - **List View:** A classic, dense list of upcoming events.
+  - **List View:** A classic, dense list of upcoming events for the selected month.
   - **Month View:** A traditional grid-based monthly calendar.
   - **Week View:** A 7-day (Sun-Sat) detailed view.
   - **Work Week View:** A 5-day (Mon-Fri) view focused on the work week.
@@ -30,8 +31,8 @@ The goal was simple: create a fast, keyboard-driven, and visually pleasing way t
   - A live clock and date display in the header.
   - Beautiful [Catppuccin Mocha](https://github.com/catppuccin) color theme.
   - Glyphs and icons for a modern look (requires a [Nerd Font](https://www.nerdfonts.com/)).
-  - A popup for viewing event details, with scrolling for long descriptions.
-  - Smooth dissolve transitions between views.
+  - A popup for viewing event details, including description and attendees.
+  - Scrollable popups for long event descriptions.
 - **Configurable & Smart:**
   - Auto-refreshes events periodically (configurable interval).
   - Manual refresh key (`r`).
@@ -138,6 +139,7 @@ This project stands on the shoulders of giants. Key dependencies include:
 - `clap` for command-line argument parsing.
 - `log` & `simple_logging` for file-based logging.
 - `futures` for running parallel API calls.
+- `regex` for cleaning HTML content.
 
 ## 📜 License
 
