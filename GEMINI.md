@@ -110,14 +110,15 @@ pub struct App {
     // Animation state
     pub transition: Option<Transition>,
 }
+```
 
-7. Configuration
+## 7. Configuration
 
 The application requires a configuration file located at: ~/.config/365cal-tui/Settings.toml
 
 Example Settings.toml:
-Ini, TOML
 
+```toml
 client_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 refresh_interval_minutes = 15
 enable_debug_log = false
