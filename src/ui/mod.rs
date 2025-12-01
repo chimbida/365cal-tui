@@ -5,7 +5,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph, Widget},
+    widgets::{Block, Borders, Clear, Paragraph, Row, Table, Widget},
     Frame,
 };
 
@@ -87,34 +87,50 @@ pub fn ui(f: &mut Frame, app: &mut App, theme: &Theme) {
 
     let header_chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(65), Constraint::Percentage(35)])
+        .constraints([
+            Constraint::Min(0),
+            Constraint::Length(22), // Help text
+            Constraint::Length(28), // Date/Time
+        ])
         .split(main_chunks[0]);
 
-    let help_text = match app.current_view {
-        CurrentView::Calendars => "↑/↓ Nav, Enter Select, q Quit",
-        CurrentView::Events => match app.event_view_mode {
-            EventViewMode::List => {
-                "↑/↓ Nav, ←/→ Month, Enter Details, Tab Month, r Refresh, b Back, q Quit"
-            }
-            EventViewMode::Month => "←/→ Month, Tab Week, r Refresh, b Back, q Quit",
-            EventViewMode::Week => "←/→ Week, Tab Work Week, r Refresh, b Back, q Quit",
-            EventViewMode::WorkWeek => "←/→ Week, Tab List, r Refresh, b Back, q Quit",
-        },
-        CurrentView::EventDetail => "↑/↓ Scroll, b Back, q Quit",
-    };
-    let help_paragraph = Paragraph::new(format!("  {}", help_text))
-        .style(Style::default().fg(theme.foreground))
+    // Title / Breadcrumbs (Left)
+    // For now, just a spacer or we can put the current view name
+    let title_paragraph = Paragraph::new(match app.current_view {
+        CurrentView::Calendars => "  Calendars",
+        CurrentView::Events => "  Events",
+        CurrentView::EventDetail => "  Details",
+    })
+    .style(
+        Style::default()
+            .fg(theme.mauve)
+            .add_modifier(ratatui::style::Modifier::BOLD),
+    )
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(theme.mauve)),
+    );
+    f.render_widget(title_paragraph, header_chunks[0]);
+
+    // Help Text (Middle/Right)
+    let help_text = "  Press ? for help ";
+    let help_paragraph = Paragraph::new(help_text)
+        .style(Style::default().fg(theme.blue))
+        .alignment(Alignment::Center)
         .block(
             Block::default()
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(theme.mauve)),
         );
-    f.render_widget(help_paragraph, header_chunks[0]);
+    f.render_widget(help_paragraph, header_chunks[1]);
+    app.help_area = header_chunks[1];
 
+    // Date/Time (Right)
     let now = Local::now();
     let datetime_str = format!(
         " {} {} ",
-        now.format(" %a, %d/%m/%Y"),
+        now.format(" %d/%m/%Y"),
         now.format(" %H:%M:%S")
     );
     let datetime_paragraph = Paragraph::new(datetime_str)
@@ -125,7 +141,7 @@ pub fn ui(f: &mut Frame, app: &mut App, theme: &Theme) {
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(theme.mauve)),
         );
-    f.render_widget(datetime_paragraph, header_chunks[1]);
+    f.render_widget(datetime_paragraph, header_chunks[2]);
 
     let content_area = main_chunks[1];
     match app.current_view {
@@ -134,8 +150,17 @@ pub fn ui(f: &mut Frame, app: &mut App, theme: &Theme) {
             let calendar_name = app
                 .current_calendar_id
                 .as_ref()
-                .and_then(|id| app.calendars.iter().find(|c| &c.calendar.id == id))
-                .map_or("All Calendars".to_string(), |c| c.calendar.name.clone());
+                .and_then(|id| {
+                    if id == crate::app::MY_CALENDARS_ID {
+                        Some("My Calendars".to_string())
+                    } else {
+                        app.calendars
+                            .iter()
+                            .find(|c| &c.calendar.id == id)
+                            .map(|c| c.calendar.name.clone())
+                    }
+                })
+                .unwrap_or_else(|| "All Calendars".to_string());
 
             match app.event_view_mode {
                 EventViewMode::List => draw_event_list(f, app, content_area, theme, &calendar_name),
@@ -182,6 +207,51 @@ pub fn ui(f: &mut Frame, app: &mut App, theme: &Theme) {
             f.render_widget(DissolveEffect::new(progress), f.size());
         }
     }
+
+    if app.show_help {
+        let area = centered_rect(60, 60, f.size());
+        draw_help_popup(f, area, theme);
+    }
+}
+
+fn draw_help_popup(f: &mut Frame, area: Rect, theme: &Theme) {
+    f.render_widget(Clear, area);
+
+    let rows = vec![
+        Row::new(vec!["Key", "Action"]),
+        Row::new(vec!["?", "Toggle Help"]),
+        Row::new(vec!["q", "Quit"]),
+        Row::new(vec!["r", "Refresh Events"]),
+        Row::new(vec!["b", "Back"]),
+        Row::new(vec!["Enter", "Select / Details"]),
+        Row::new(vec!["Tab", "Cycle Views"]),
+        Row::new(vec!["↑/↓", "Navigate List / Scroll"]),
+        Row::new(vec!["a/d", "Navigate Month/Week"]),
+    ];
+
+    let table = Table::new(
+        rows,
+        [Constraint::Percentage(30), Constraint::Percentage(70)],
+    )
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(theme.mauve))
+            .title(" Keyboard Shortcuts "),
+    )
+    .header(
+        Row::new(vec!["Key", "Action"])
+            .style(
+                Style::default()
+                    .fg(theme.yellow)
+                    .add_modifier(ratatui::style::Modifier::BOLD),
+            )
+            .bottom_margin(1),
+    )
+    .column_spacing(1)
+    .style(Style::default().fg(theme.foreground));
+
+    f.render_widget(table, area);
 }
 
 struct DissolveEffect {

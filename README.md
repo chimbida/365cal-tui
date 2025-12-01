@@ -16,6 +16,7 @@ The goal was simple: create a fast, keyboard-driven, and visually pleasing way t
 - **Multiple Calendar Support:**
   - View a list of all your calendars.
   - An "All Calendars" view that aggregates events from all sources.
+  - **My Calendars:** A filter to show only calendars you own.
   - **Color-coded calendars and events** to easily distinguish which calendar an event belongs to.
   - A dynamic color legend appears when viewing "All Calendars".
 - **Multiple Event Views:**
@@ -25,12 +26,15 @@ The goal was simple: create a fast, keyboard-driven, and visually pleasing way t
   - **Work Week View:** A 5-day (Mon-Fri) view focused on the work week.
 - **Seamless Navigation:**
   - `Tab` key to cycle through List, Month, Week, and Work Week views.
-  - `←`/`→` arrow keys to navigate between months or weeks.
+  - `A`/`D` keys to navigate between months or weeks.
   - `↑`/`↓` arrow keys for list selection.
   - **Mouse Support:** 🖱️
     - Click to select calendars and events.
+    - Click on days in Month/Week views to zoom in.
+    - Click the help button `[ ? ]` to view shortcuts.
     - Scroll wheel to navigate lists and details.
 - **Polished UI & UX:**
+  - **Help Popup:** Press `?` or click the help button to view keyboard shortcuts.
   - A live clock and date display in the header.
   - Beautiful [Catppuccin Mocha](https://github.com/catppuccin) color theme.
   - Glyphs and icons for a modern look (requires a [Nerd Font](https://www.nerdfonts.com/)).

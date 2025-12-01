@@ -9,6 +9,8 @@ use ratatui::style::Color;
 use ratatui::widgets::ListState;
 use std::time::{Duration as StdDuration, Instant};
 
+pub const MY_CALENDARS_ID: &str = "MY_CALENDARS";
+
 /// Represents the state of a view transition animation.
 pub struct Transition {
     pub start: Instant,
@@ -48,6 +50,8 @@ pub struct App {
     pub transition: Option<Transition>,
     pub calendar_list_area: Rect,
     pub event_list_area: Rect,
+    pub help_area: Rect,
+    pub show_help: bool,
 }
 
 // CORRECTION: These structs are now public so other modules can use them.
@@ -107,6 +111,8 @@ impl App {
             transition: None,
             calendar_list_area: Rect::default(),
             event_list_area: Rect::default(),
+            help_area: Rect::default(),
+            show_help: false,
         }
     }
 
@@ -185,7 +191,7 @@ impl App {
 
     pub fn next_item(&mut self) {
         let (state, len) = match self.current_view {
-            CurrentView::Calendars => (&mut self.calendar_list_state, self.calendars.len() + 1),
+            CurrentView::Calendars => (&mut self.calendar_list_state, self.calendars.len() + 2),
             CurrentView::Events => {
                 if let EventViewMode::List = self.event_view_mode {
                     (&mut self.event_list_state, self.events.len())
@@ -205,7 +211,7 @@ impl App {
 
     pub fn previous_item(&mut self) {
         let (state, len) = match self.current_view {
-            CurrentView::Calendars => (&mut self.calendar_list_state, self.calendars.len() + 1),
+            CurrentView::Calendars => (&mut self.calendar_list_state, self.calendars.len() + 2),
             CurrentView::Events => {
                 if let EventViewMode::List = self.event_view_mode {
                     (&mut self.event_list_state, self.events.len())

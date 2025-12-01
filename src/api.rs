@@ -7,6 +7,8 @@ use serde::Deserialize;
 pub struct GraphCalendar {
     pub id: String,
     pub name: String,
+    #[serde(rename = "canShare")]
+    pub can_share: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -57,10 +59,11 @@ struct EventListResponse {
     next_link: Option<String>,
 }
 
-
 // --- API Call Functions ---
 
-pub async fn list_calendars(access_token: &str) -> Result<Vec<GraphCalendar>, Box<dyn std::error::Error>> {
+pub async fn list_calendars(
+    access_token: &str,
+) -> Result<Vec<GraphCalendar>, Box<dyn std::error::Error>> {
     let client = reqwest::Client::new();
     let response = client
         .get("https://graph.microsoft.com/v1.0/me/calendars")
@@ -109,7 +112,11 @@ pub async fn list_events(
     let text = initial_response.text().await?;
     // CORRECTION: Removed the unnecessary `mut` keyword.
     let event_response: EventListResponse = serde_json::from_str(&text).map_err(|e| {
-        log::error!("Failed to decode JSON on first page: {}. JSON received: {}", e, text);
+        log::error!(
+            "Failed to decode JSON on first page: {}. JSON received: {}",
+            e,
+            text
+        );
         e
     })?;
 
@@ -119,15 +126,15 @@ pub async fn list_events(
     // Loop for subsequent pages using the nextLink provided by the API
     while let Some(url) = next_url {
         log::info!("Fetching next event page from: {}", url);
-        let response = client
-            .get(&url)
-            .bearer_auth(access_token)
-            .send()
-            .await?;
+        let response = client.get(&url).bearer_auth(access_token).send().await?;
 
         let text = response.text().await?;
         let event_response: EventListResponse = serde_json::from_str(&text).map_err(|e| {
-            log::error!("Failed to decode JSON on paginated request: {}. JSON received: {}", e, text);
+            log::error!(
+                "Failed to decode JSON on paginated request: {}. JSON received: {}",
+                e,
+                text
+            );
             e
         })?;
 

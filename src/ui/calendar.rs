@@ -15,6 +15,7 @@ pub fn draw_calendar_list(f: &mut Frame, app: &mut App, area: Rect, theme: &Them
         .fg(theme.foreground)
         .add_modifier(Modifier::BOLD);
     items.push(ListItem::new("✨ All Calendars").style(all_calendars_style));
+    items.push(ListItem::new("👤 My Calendars").style(all_calendars_style));
     for c in &app.calendars {
         let line = Line::from(vec![
             Span::styled("■ ", Style::default().fg(c.color)),

@@ -1,6 +1,6 @@
 use crate::{
     api::list_events,
-    app::{App, ColorEvent, CurrentView, EventViewMode},
+    app::{App, ColorEvent, CurrentView, EventViewMode, MY_CALENDARS_ID},
     ui::{ui, Theme},
     AppEvent,
 };
@@ -16,11 +16,19 @@ use tokio::sync::mpsc;
 /// Asynchronously fetches events and handles token refresh logic.
 async fn refresh_events(app: &mut App) {
     let calendars_to_fetch = if let Some(id) = &app.current_calendar_id {
-        app.calendars
-            .iter()
-            .filter(|c| c.calendar.id == *id)
-            .cloned()
-            .collect()
+        if id == MY_CALENDARS_ID {
+            app.calendars
+                .iter()
+                .filter(|c| c.calendar.can_share.unwrap_or(false))
+                .cloned()
+                .collect()
+        } else {
+            app.calendars
+                .iter()
+                .filter(|c| c.calendar.id == *id)
+                .cloned()
+                .collect()
+        }
     } else {
         app.calendars.clone()
     };
@@ -132,6 +140,25 @@ pub async fn run_app(
                     if app.transition.is_some() {
                         continue;
                     }
+
+                    if app.show_help {
+                        match key.code {
+                            KeyCode::Esc
+                            | KeyCode::Char('q')
+                            | KeyCode::Char('?')
+                            | KeyCode::Enter => {
+                                app.show_help = false;
+                            }
+                            _ => {}
+                        }
+                        continue;
+                    }
+
+                    if let KeyCode::Char('?') = key.code {
+                        app.show_help = true;
+                        continue;
+                    }
+
                     match app.current_view {
                         CurrentView::Calendars => match key.code {
                             KeyCode::Char('q') => return Ok(()),
@@ -141,8 +168,10 @@ pub async fn run_app(
                                 if let Some(selected) = app.calendar_list_state.selected() {
                                     if selected == 0 {
                                         app.current_calendar_id = None;
+                                    } else if selected == 1 {
+                                        app.current_calendar_id = Some(MY_CALENDARS_ID.to_string());
                                     } else {
-                                        let calendar_index = selected - 1;
+                                        let calendar_index = selected - 2;
                                         app.current_calendar_id =
                                             Some(app.calendars[calendar_index].calendar.id.clone());
                                     }
@@ -173,7 +202,7 @@ pub async fn run_app(
                             }
                             KeyCode::Down => app.next_item(),
                             KeyCode::Up => app.previous_item(),
-                            KeyCode::Left => {
+                            KeyCode::Char('a') => {
                                 match app.event_view_mode {
                                     EventViewMode::List | EventViewMode::Month => {
                                         app.previous_month()
@@ -184,7 +213,7 @@ pub async fn run_app(
                                 }
                                 needs_refresh = true;
                             }
-                            KeyCode::Right => {
+                            KeyCode::Char('d') => {
                                 match app.event_view_mode {
                                     EventViewMode::List | EventViewMode::Month => app.next_month(),
                                     EventViewMode::Week | EventViewMode::WorkWeek => {
@@ -208,10 +237,30 @@ pub async fn run_app(
                     }
                 }
                 CEvent::Mouse(mouse) => {
+                    if app.show_help {
+                        // Click anywhere to close help
+                        if let MouseEventKind::Down(_) = mouse.kind {
+                            app.show_help = false;
+                        }
+                        continue;
+                    }
+
                     match mouse.kind {
                         MouseEventKind::Down(MouseButton::Left) => {
                             let x = mouse.column;
                             let y = mouse.row;
+
+                            // Check for Help Click
+                            let help_area = app.help_area;
+                            if x >= help_area.left()
+                                && x < help_area.right()
+                                && y >= help_area.top()
+                                && y < help_area.bottom()
+                            {
+                                app.show_help = true;
+                                continue;
+                            }
+
                             match app.current_view {
                                 CurrentView::Calendars => {
                                     let area = app.calendar_list_area;
@@ -236,13 +285,16 @@ pub async fn run_app(
                                             // If we click, we want to select the item at that visual position.
                                             // This is hard without knowing the scroll offset.
                                             // However, for small lists (calendars), it fits on screen.
-                                            if index < app.calendars.len() + 1 {
+                                            if index < app.calendars.len() + 2 {
                                                 app.calendar_list_state.select(Some(index));
                                                 // Trigger selection action
                                                 if index == 0 {
                                                     app.current_calendar_id = None;
+                                                } else if index == 1 {
+                                                    app.current_calendar_id =
+                                                        Some(MY_CALENDARS_ID.to_string());
                                                 } else {
-                                                    let calendar_index = index - 1;
+                                                    let calendar_index = index - 2;
                                                     app.current_calendar_id = Some(
                                                         app.calendars[calendar_index]
                                                             .calendar
@@ -266,18 +318,119 @@ pub async fn run_app(
                                             && y < area.bottom()
                                         {
                                             if y > area.top() && y < area.bottom() - 1 {
-                                                // let relative_y = (y - area.top() - 1) as usize;
-                                                // We need to account for the list offset.
-                                                // Since we don't have access to the internal offset of the List widget,
-                                                // we can only support clicking if the list is not scrolled or if we track offset.
-                                                // A simple workaround is to just select the item if it's within bounds of the *data*.
-                                                // But if scrolled, we select the wrong item.
-                                                // Let's just support clicking the first N items for now or try to guess.
-                                                // Better: Use Scroll Up/Down to navigate, and Click to select *currently selected*? No that's weird.
-                                                // Let's just implement Scroll for now, and Click for Calendars (which are few).
-                                                // For events, maybe just click to open details if we can map it?
-                                                // Let's try to map it assuming offset 0 for now, or just don't support click-to-select on long lists yet.
-                                                // Actually, we can just use the scroll wheel to change selection!
+                                                let visual_index = (y - area.top() - 1) as usize;
+                                                let offset = app.event_list_state.offset();
+                                                let index = offset + visual_index;
+
+                                                if index < app.events.len() {
+                                                    app.event_list_state.select(Some(index));
+                                                    app.detail_view_scroll = 0;
+                                                    app.current_view = CurrentView::EventDetail;
+                                                }
+                                            }
+                                        }
+                                    } else if let EventViewMode::Month = app.event_view_mode {
+                                        // Month View Click Logic
+                                        // We need to replicate the layout logic from draw_month_view
+                                        // Main block borders
+                                        let inner_area =
+                                            app.event_list_area.inner(ratatui::layout::Margin {
+                                                vertical: 1,
+                                                horizontal: 1,
+                                            });
+                                        if x >= inner_area.left()
+                                            && x < inner_area.right()
+                                            && y >= inner_area.top()
+                                            && y < inner_area.bottom()
+                                        {
+                                            // Header is 1 line
+                                            let grid_area_top = inner_area.top() + 1;
+                                            if y >= grid_area_top {
+                                                let grid_height =
+                                                    inner_area.height.saturating_sub(1);
+                                                let grid_width = inner_area.width;
+
+                                                // 6 rows, 7 columns
+                                                let row_height = grid_height / 6;
+                                                let col_width = grid_width / 7;
+
+                                                if row_height > 0 && col_width > 0 {
+                                                    let row = (y - grid_area_top) / row_height;
+                                                    let col = (x - inner_area.left()) / col_width;
+
+                                                    if row < 6 && col < 7 {
+                                                        // Calculate the date
+                                                        let first_day =
+                                                            app.displayed_date.with_day(1).unwrap();
+                                                        let mut starting_day = first_day;
+                                                        while starting_day.weekday() != Weekday::Mon
+                                                        {
+                                                            starting_day =
+                                                                starting_day.pred_opt().unwrap();
+                                                        }
+
+                                                        let days_offset = (row * 7 + col) as i64;
+                                                        let clicked_date = starting_day
+                                                            + ChronoDuration::days(days_offset);
+
+                                                        // Switch to List View for this date
+                                                        app.displayed_date = clicked_date;
+                                                        app.event_view_mode = EventViewMode::List;
+                                                        app.start_transition(300);
+                                                        needs_refresh = true;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } else if let EventViewMode::Week | EventViewMode::WorkWeek =
+                                        app.event_view_mode
+                                    {
+                                        // Week/Work Week View Click Logic
+                                        let inner_area =
+                                            app.event_list_area.inner(ratatui::layout::Margin {
+                                                vertical: 1,
+                                                horizontal: 1,
+                                            });
+                                        if x >= inner_area.left()
+                                            && x < inner_area.right()
+                                            && y >= inner_area.top()
+                                            && y < inner_area.bottom()
+                                        {
+                                            let num_days =
+                                                if let EventViewMode::Week = app.event_view_mode {
+                                                    7
+                                                } else {
+                                                    5
+                                                };
+                                            let col_width = inner_area.width / num_days as u16;
+
+                                            if col_width > 0 {
+                                                let col = (x - inner_area.left()) / col_width;
+                                                if col < num_days as u16 {
+                                                    // Calculate date
+                                                    let mut start_date = app.displayed_date;
+                                                    if let EventViewMode::Week = app.event_view_mode
+                                                    {
+                                                        while start_date.weekday() != Weekday::Sun {
+                                                            start_date =
+                                                                start_date.pred_opt().unwrap();
+                                                        }
+                                                    } else {
+                                                        while start_date.weekday() != Weekday::Mon {
+                                                            start_date =
+                                                                start_date.pred_opt().unwrap();
+                                                        }
+                                                    }
+
+                                                    let clicked_date = start_date
+                                                        + ChronoDuration::days(col as i64);
+
+                                                    // Switch to List View
+                                                    app.displayed_date = clicked_date;
+                                                    app.event_view_mode = EventViewMode::List;
+                                                    app.start_transition(300);
+                                                    needs_refresh = true;
+                                                }
                                             }
                                         }
                                     }
