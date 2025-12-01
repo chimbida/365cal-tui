@@ -27,11 +27,15 @@ The goal was simple: create a fast, keyboard-driven, and visually pleasing way t
   - `Tab` key to cycle through List, Month, Week, and Work Week views.
   - `←`/`→` arrow keys to navigate between months or weeks.
   - `↑`/`↓` arrow keys for list selection.
+  - **Mouse Support:** 🖱️
+    - Click to select calendars and events.
+    - Scroll wheel to navigate lists and details.
 - **Polished UI & UX:**
   - A live clock and date display in the header.
   - Beautiful [Catppuccin Mocha](https://github.com/catppuccin) color theme.
   - Glyphs and icons for a modern look (requires a [Nerd Font](https://www.nerdfonts.com/)).
   - A popup for viewing event details, including description and attendees.
+  - **Rich Text Rendering:** Event descriptions with HTML are formatted nicely using `html2text`.
   - Scrollable popups for long event descriptions.
 - **Configurable & Smart:**
   - Auto-refreshes events periodically (configurable interval).
@@ -139,6 +143,7 @@ This project stands on the shoulders of giants. Key dependencies include:
 - `clap` for command-line argument parsing.
 - `log` & `simple_logging` for file-based logging.
 - `futures` for running parallel API calls.
+- `html2text` for rendering HTML event descriptions.
 - `regex` for cleaning HTML content.
 
 ## 📜 License

@@ -1,9 +1,10 @@
 use crate::api::{GraphCalendar, GraphEvent};
 use chrono::{Datelike, Duration, Local, NaiveDate};
 use oauth2::{
-    basic::BasicClient, reqwest::async_http_client, AuthUrl, ClientId, RedirectUrl,
-    TokenResponse, TokenUrl,
+    basic::BasicClient, reqwest::async_http_client, AuthUrl, ClientId, RedirectUrl, TokenResponse,
+    TokenUrl,
 };
+use ratatui::layout::Rect;
 use ratatui::style::Color;
 use ratatui::widgets::ListState;
 use std::time::{Duration as StdDuration, Instant};
@@ -45,6 +46,8 @@ pub struct App {
     pub detail_view_scroll: u16,
     pub displayed_date: NaiveDate,
     pub transition: Option<Transition>,
+    pub calendar_list_area: Rect,
+    pub event_list_area: Rect,
 }
 
 // CORRECTION: These structs are now public so other modules can use them.
@@ -60,19 +63,24 @@ pub struct ColorEvent {
     pub color: Color,
 }
 
-
 impl App {
     pub fn new(client_id: String, access_token: String, calendars: Vec<GraphCalendar>) -> Self {
         let mut calendar_list_state = ListState::default();
         calendar_list_state.select(Some(0));
-        
+
         let colors = vec![
-            Color::Rgb(203, 166, 247), Color::Rgb(245, 194, 231),
-            Color::Rgb(235, 160, 172), Color::Rgb(243, 139, 168),
-            Color::Rgb(250, 179, 135), Color::Rgb(249, 226, 175),
-            Color::Rgb(166, 227, 161), Color::Rgb(148, 226, 213),
-            Color::Rgb(137, 220, 235), Color::Rgb(116, 199, 236),
-            Color::Rgb(137, 180, 250), Color::Rgb(180, 190, 254),
+            Color::Rgb(203, 166, 247),
+            Color::Rgb(245, 194, 231),
+            Color::Rgb(235, 160, 172),
+            Color::Rgb(243, 139, 168),
+            Color::Rgb(250, 179, 135),
+            Color::Rgb(249, 226, 175),
+            Color::Rgb(166, 227, 161),
+            Color::Rgb(148, 226, 213),
+            Color::Rgb(137, 220, 235),
+            Color::Rgb(116, 199, 236),
+            Color::Rgb(137, 180, 250),
+            Color::Rgb(180, 190, 254),
         ];
 
         let color_calendars = calendars
@@ -83,7 +91,7 @@ impl App {
                 color: colors[i % colors.len()],
             })
             .collect();
-        
+
         Self {
             client_id,
             access_token,
@@ -97,17 +105,24 @@ impl App {
             detail_view_scroll: 0,
             displayed_date: Local::now().date_naive(),
             transition: None,
+            calendar_list_area: Rect::default(),
+            event_list_area: Rect::default(),
         }
     }
 
     fn create_oauth_client(&self) -> BasicClient {
         let client_id = ClientId::new(self.client_id.clone());
-        let auth_url = AuthUrl::new("https://login.microsoftonline.com/common/oauth2/v2.0/authorize".to_string()).unwrap();
-        let token_url = Some(TokenUrl::new("https://login.microsoftonline.com/common/oauth2/v2.0/token".to_string()).unwrap());
+        let auth_url = AuthUrl::new(
+            "https://login.microsoftonline.com/common/oauth2/v2.0/authorize".to_string(),
+        )
+        .unwrap();
+        let token_url = Some(
+            TokenUrl::new("https://login.microsoftonline.com/common/oauth2/v2.0/token".to_string())
+                .unwrap(),
+        );
         let redirect_url = RedirectUrl::new("http://localhost:8080".to_string()).unwrap();
-        
-        BasicClient::new(client_id, None, auth_url, token_url)
-            .set_redirect_uri(redirect_url)
+
+        BasicClient::new(client_id, None, auth_url, token_url).set_redirect_uri(redirect_url)
     }
 
     pub async fn refresh_auth_token(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -117,7 +132,7 @@ impl App {
                 .exchange_refresh_token(&refresh_token)
                 .request_async(async_http_client)
                 .await;
-            
+
             if let Ok(refreshed_token) = token_result {
                 self.access_token = refreshed_token.access_token().secret().clone();
                 if let Some(new_refresh_token) = refreshed_token.refresh_token() {
@@ -135,7 +150,7 @@ impl App {
             duration: StdDuration::from_millis(ms),
         });
     }
-    
+
     pub fn toggle_event_view(&mut self) {
         self.event_view_mode = match self.event_view_mode {
             EventViewMode::List => EventViewMode::Month,
@@ -174,12 +189,16 @@ impl App {
             CurrentView::Events => {
                 if let EventViewMode::List = self.event_view_mode {
                     (&mut self.event_list_state, self.events.len())
-                } else { return; }
+                } else {
+                    return;
+                }
             }
             _ => return,
         };
-        
-        if len == 0 { return; }
+
+        if len == 0 {
+            return;
+        }
         let i = state.selected().map_or(0, |i| (i + 1) % len);
         state.select(Some(i));
     }
@@ -190,12 +209,16 @@ impl App {
             CurrentView::Events => {
                 if let EventViewMode::List = self.event_view_mode {
                     (&mut self.event_list_state, self.events.len())
-                } else { return; }
+                } else {
+                    return;
+                }
             }
             _ => return,
         };
-        
-        if len == 0 { return; }
+
+        if len == 0 {
+            return;
+        }
         let i = state.selected().map_or(len - 1, |i| (i + len - 1) % len);
         state.select(Some(i));
     }

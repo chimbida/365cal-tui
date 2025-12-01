@@ -1,5 +1,6 @@
 use clap::Parser;
 use crossterm::{
+    event::{DisableMouseCapture, EnableMouseCapture},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -9,12 +10,12 @@ use std::io;
 use tokio::sync::mpsc;
 use tokio::time::{self, Duration};
 
-mod app;
-mod ui;
-mod tui;
-mod config;
-mod auth;
 mod api;
+mod app;
+mod auth;
+mod config;
+mod tui;
+mod ui;
 
 pub enum AppEvent {
     Refresh,
@@ -30,7 +31,7 @@ struct Cli {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
-    
+
     let settings = config::load_config().map_err(|e| {
         println!("ERROR: Could not find or read the configuration file.");
         println!("Please ensure 'Settings.toml' exists at ~/.config/365cal-tui/");
@@ -41,7 +42,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if enable_logging {
         simple_logging::log_to_file("365cal-tui.log", log::LevelFilter::Debug)?;
     }
-    
+
     info!("Application started.");
 
     let (tx, rx) = mpsc::channel(1);
@@ -65,24 +66,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Fetching calendars...");
     let calendars = api::list_calendars(&access_token).await?;
-    
+
     // CORREÇÃO: Passando o client_id para o construtor do App
     let mut app = app::App::new(client_id_for_app, access_token, calendars);
 
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
     let res = tui::run_app(&mut terminal, &mut app, rx).await;
 
     disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        DisableMouseCapture
+    )?;
     terminal.show_cursor()?;
-    
+
     info!("Application terminated.");
-    
+
     if let Err(err) = res {
         error!("Application runtime error: {}", err);
     }
