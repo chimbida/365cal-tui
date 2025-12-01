@@ -1,5 +1,5 @@
 use crate::api::{GraphCalendar, GraphEvent};
-use chrono::{Datelike, Duration, Local, NaiveDate};
+use chrono::{Datelike, Duration, Local, NaiveDate, NaiveDateTime};
 use oauth2::{
     basic::BasicClient, reqwest::async_http_client, AuthUrl, ClientId, RedirectUrl, TokenResponse,
     TokenUrl,
@@ -192,13 +192,7 @@ impl App {
     pub fn next_item(&mut self) {
         let (state, len) = match self.current_view {
             CurrentView::Calendars => (&mut self.calendar_list_state, self.calendars.len() + 2),
-            CurrentView::Events => {
-                if let EventViewMode::List = self.event_view_mode {
-                    (&mut self.event_list_state, self.events.len())
-                } else {
-                    return;
-                }
-            }
+            CurrentView::Events => (&mut self.event_list_state, self.events.len()),
             _ => return,
         };
 
@@ -212,13 +206,7 @@ impl App {
     pub fn previous_item(&mut self) {
         let (state, len) = match self.current_view {
             CurrentView::Calendars => (&mut self.calendar_list_state, self.calendars.len() + 2),
-            CurrentView::Events => {
-                if let EventViewMode::List = self.event_view_mode {
-                    (&mut self.event_list_state, self.events.len())
-                } else {
-                    return;
-                }
-            }
+            CurrentView::Events => (&mut self.event_list_state, self.events.len()),
             _ => return,
         };
 
@@ -229,11 +217,85 @@ impl App {
         state.select(Some(i));
     }
 
-    pub fn get_selected_event(&self) -> Option<&ColorEvent> {
-        if let EventViewMode::List = self.event_view_mode {
-            if let Some(index) = self.event_list_state.selected() {
-                return self.events.get(index);
+    pub fn jump_to_next_day(&mut self) {
+        if let Some(selected_index) = self.event_list_state.selected() {
+            if let Some(current_event) = self.events.get(selected_index) {
+                if let Ok(current_start) = NaiveDateTime::parse_from_str(
+                    &current_event.event.start.date_time,
+                    "%Y-%m-%dT%H:%M:%S%.f",
+                ) {
+                    let current_date = current_start.date();
+                    // Find the first event that is strictly after the current date
+                    if let Some(next_index) = self.events.iter().position(|e| {
+                        if let Ok(start) = NaiveDateTime::parse_from_str(
+                            &e.event.start.date_time,
+                            "%Y-%m-%dT%H:%M:%S%.f",
+                        ) {
+                            start.date() > current_date
+                        } else {
+                            false
+                        }
+                    }) {
+                        self.event_list_state.select(Some(next_index));
+                    }
+                }
             }
+        }
+    }
+
+    pub fn jump_to_previous_day(&mut self) {
+        if let Some(selected_index) = self.event_list_state.selected() {
+            if let Some(current_event) = self.events.get(selected_index) {
+                if let Ok(current_start) = NaiveDateTime::parse_from_str(
+                    &current_event.event.start.date_time,
+                    "%Y-%m-%dT%H:%M:%S%.f",
+                ) {
+                    let current_date = current_start.date();
+                    // Find the first event of the previous day (or the day before that if none)
+                    // We iterate backwards from the current index
+                    let mut prev_index = None;
+                    for (_i, e) in self.events.iter().enumerate().take(selected_index).rev() {
+                        if let Ok(start) = NaiveDateTime::parse_from_str(
+                            &e.event.start.date_time,
+                            "%Y-%m-%dT%H:%M:%S%.f",
+                        ) {
+                            if start.date() < current_date {
+                                // We found an event on a previous date.
+                                // Now we want to find the *first* event of that date.
+                                let target_date = start.date();
+                                // Search forward from 0 to find the first match for target_date
+                                // Optimization: We could search forward from `i` if we knew `i` was the last one,
+                                // but `i` is just *one* of them.
+                                // Actually, since the list is sorted, the first event of `target_date`
+                                // is the first one we encounter when iterating forwards.
+                                // So let's just find the first event with `target_date`.
+                                if let Some(first_of_day) = self.events.iter().position(|ev| {
+                                    if let Ok(s) = NaiveDateTime::parse_from_str(
+                                        &ev.event.start.date_time,
+                                        "%Y-%m-%dT%H:%M:%S%.f",
+                                    ) {
+                                        s.date() == target_date
+                                    } else {
+                                        false
+                                    }
+                                }) {
+                                    prev_index = Some(first_of_day);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if let Some(idx) = prev_index {
+                        self.event_list_state.select(Some(idx));
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn get_selected_event(&self) -> Option<&ColorEvent> {
+        if let Some(index) = self.event_list_state.selected() {
+            return self.events.get(index);
         }
         None
     }

@@ -4,11 +4,18 @@ use crate::{
     ui::{ui, Theme},
     AppEvent,
 };
-use chrono::{DateTime, Datelike, Duration as ChronoDuration, Local, NaiveDate, Utc, Weekday};
+use chrono::{
+    DateTime, Datelike, Duration as ChronoDuration, Local, NaiveDate, NaiveDateTime, Utc, Weekday,
+};
 use crossterm::event::{self, Event as CEvent, KeyCode, MouseButton, MouseEventKind};
 use futures::future::join_all;
 use log::{error, info, warn};
-use ratatui::{backend::CrosstermBackend, Terminal};
+use ratatui::{
+    backend::CrosstermBackend,
+    layout::{Constraint, Direction, Layout, Rect},
+    terminal::Terminal,
+};
+use unicode_width::UnicodeWidthStr;
 use std::io;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -191,13 +198,14 @@ pub async fn run_app(
                                 app.start_transition(300);
                             }
                             KeyCode::Char('r') => needs_refresh = true,
-                            KeyCode::Tab => app.toggle_event_view(),
+                            KeyCode::Tab => {
+                                app.toggle_event_view();
+                                needs_refresh = true;
+                            }
                             KeyCode::Enter => {
-                                if let EventViewMode::List = app.event_view_mode {
-                                    if app.get_selected_event().is_some() {
-                                        app.detail_view_scroll = 0;
-                                        app.current_view = CurrentView::EventDetail;
-                                    }
+                                if app.get_selected_event().is_some() {
+                                    app.detail_view_scroll = 0;
+                                    app.current_view = CurrentView::EventDetail;
                                 }
                             }
                             KeyCode::Down => app.next_item(),
@@ -222,6 +230,8 @@ pub async fn run_app(
                                 }
                                 needs_refresh = true;
                             }
+                            KeyCode::Left => app.jump_to_previous_day(),
+                            KeyCode::Right => app.jump_to_next_day(),
                             _ => {}
                         },
                         CurrentView::EventDetail => match key.code {
@@ -331,82 +341,137 @@ pub async fn run_app(
                                         }
                                     } else if let EventViewMode::Month = app.event_view_mode {
                                         // Month View Click Logic
-                                        // We need to replicate the layout logic from draw_month_view
-                                        // Main block borders
                                         let inner_area =
                                             app.event_list_area.inner(ratatui::layout::Margin {
                                                 vertical: 1,
                                                 horizontal: 1,
                                             });
-                                        if x >= inner_area.left()
-                                            && x < inner_area.right()
-                                            && y >= inner_area.top()
-                                            && y < inner_area.bottom()
+
+                                        // Header is 1 line
+                                        let grid_area = Rect {
+                                            x: inner_area.x,
+                                            y: inner_area.y + 1,
+                                            width: inner_area.width,
+                                            height: inner_area.height.saturating_sub(1),
+                                        };
+
+                                        let row_chunks = Layout::default()
+                                            .direction(Direction::Vertical)
+                                            .constraints(vec![Constraint::Ratio(1, 6); 6])
+                                            .split(grid_area);
+
+                                        if let Some(row) = row_chunks
+                                            .iter()
+                                            .position(|r| y >= r.top() && y < r.bottom())
                                         {
-                                            // Header is 1 line
-                                            let grid_area_top = inner_area.top() + 1;
-                                            if y >= grid_area_top {
-                                                let grid_height =
-                                                    inner_area.height.saturating_sub(1);
-                                                let grid_width = inner_area.width;
+                                            let row_area = row_chunks[row];
+                                            let col_chunks = Layout::default()
+                                                .direction(Direction::Horizontal)
+                                                .constraints(vec![Constraint::Ratio(1, 7); 7])
+                                                .split(row_area);
 
-                                                // 6 rows, 7 columns
-                                                let row_height = grid_height / 6;
-                                                let col_width = grid_width / 7;
+                                            if let Some(col) = col_chunks
+                                                .iter()
+                                                .position(|c| x >= c.left() && x < c.right())
+                                            {
+                                                // Calculate the date
+                                                let first_day =
+                                                    app.displayed_date.with_day(1).unwrap();
+                                                let mut starting_day = first_day;
+                                                while starting_day.weekday() != Weekday::Mon {
+                                                    starting_day = starting_day.pred_opt().unwrap();
+                                                }
 
-                                                if row_height > 0 && col_width > 0 {
-                                                    let row = (y - grid_area_top) / row_height;
-                                                    let col = (x - inner_area.left()) / col_width;
+                                                let days_offset = (row * 7 + col) as i64;
+                                                let clicked_date = starting_day
+                                                    + ChronoDuration::days(days_offset);
 
-                                                    if row < 6 && col < 7 {
-                                                        // Calculate the date
-                                                        let first_day =
-                                                            app.displayed_date.with_day(1).unwrap();
-                                                        let mut starting_day = first_day;
-                                                        while starting_day.weekday() != Weekday::Mon
+                                                // Check if we clicked on an event
+                                                let local_y = y - row_area.top();
+
+                                                // Filter events for this day
+                                                let day_events: Vec<usize> = app
+                                                    .events
+                                                    .iter()
+                                                    .enumerate()
+                                                    .filter_map(|(i, e)| {
+                                                        if let Ok(start) =
+                                                            NaiveDateTime::parse_from_str(
+                                                                &e.event.start.date_time,
+                                                                "%Y-%m-%dT%H:%M:%S%.f",
+                                                            )
                                                         {
-                                                            starting_day =
-                                                                starting_day.pred_opt().unwrap();
+                                                            if start.date() == clicked_date {
+                                                                return Some(i);
+                                                            }
                                                         }
+                                                        None
+                                                    })
+                                                    .collect();
 
-                                                        let days_offset = (row * 7 + col) as i64;
-                                                        let clicked_date = starting_day
-                                                            + ChronoDuration::days(days_offset);
+                                                info!("Mouse Click Month: x={}, y={}, local_y={}, date={}", x, y, local_y, clicked_date);
 
-                                                        // Switch to List View for this date
-                                                        app.displayed_date = clicked_date;
-                                                        app.event_view_mode = EventViewMode::List;
-                                                        app.start_transition(300);
-                                                        needs_refresh = true;
+                                                if local_y > 1 {
+                                                    let event_visual_index = (local_y - 2) as usize;
+                                                    info!("  Checking event index: {} (total events on day: {})", event_visual_index, day_events.len());
+
+                                                    if event_visual_index < day_events.len() {
+                                                        let event_index =
+                                                            day_events[event_visual_index];
+                                                        info!("  Event found! Selecting global index {}", event_index);
+                                                        app.event_list_state
+                                                            .select(Some(event_index));
+                                                        app.detail_view_scroll = 0;
+                                                        app.current_view = CurrentView::EventDetail;
+                                                        continue;
                                                     }
                                                 }
+
+                                                // Switch to List View for this date if clicked on header or empty space
+                                                app.displayed_date = clicked_date;
+                                                app.event_view_mode = EventViewMode::List;
+                                                app.start_transition(300);
+                                                needs_refresh = true;
                                             }
                                         }
-                                    } else if let EventViewMode::Week | EventViewMode::WorkWeek =
-                                        app.event_view_mode
-                                    {
-                                        // Week/Work Week View Click Logic
-                                        let inner_area =
-                                            app.event_list_area.inner(ratatui::layout::Margin {
-                                                vertical: 1,
-                                                horizontal: 1,
-                                            });
-                                        if x >= inner_area.left()
-                                            && x < inner_area.right()
-                                            && y >= inner_area.top()
-                                            && y < inner_area.bottom()
+                                    } else if let EventViewMode::Week
+                                        | EventViewMode::WorkWeek = app.event_view_mode
                                         {
-                                            let num_days =
-                                                if let EventViewMode::Week = app.event_view_mode {
+                                            // Week/Work Week View Click Logic
+                                            let inner_area = app.event_list_area.inner(
+                                                ratatui::layout::Margin {
+                                                    vertical: 1,
+                                                    horizontal: 1,
+                                                },
+                                            );
+                                            if x >= inner_area.left()
+                                                && x < inner_area.right()
+                                                && y >= inner_area.top()
+                                                && y < inner_area.bottom()
+                                            {
+                                                let num_days = if let EventViewMode::Week =
+                                                    app.event_view_mode
+                                                {
                                                     7
                                                 } else {
                                                     5
                                                 };
-                                            let col_width = inner_area.width / num_days as u16;
 
-                                            if col_width > 0 {
-                                                let col = (x - inner_area.left()) / col_width;
-                                                if col < num_days as u16 {
+                                                let col_chunks = Layout::default()
+                                                    .direction(Direction::Horizontal)
+                                                    .constraints(vec![
+                                                        Constraint::Ratio(
+                                                            1,
+                                                            num_days as u32
+                                                        );
+                                                        num_days
+                                                    ])
+                                                    .split(inner_area);
+
+                                                if let Some(col) = col_chunks
+                                                    .iter()
+                                                    .position(|c| x >= c.left() && x < c.right())
+                                                {
                                                     // Calculate date
                                                     let mut start_date = app.displayed_date;
                                                     if let EventViewMode::Week = app.event_view_mode
@@ -425,6 +490,81 @@ pub async fn run_app(
                                                     let clicked_date = start_date
                                                         + ChronoDuration::days(col as i64);
 
+                                                    // Check if we clicked on an event
+                                                    let local_y = y - inner_area.top();
+
+                                                    // Filter events for this day
+                                                    let day_events: Vec<(usize, String)> = app
+                                                        .events
+                                                        .iter()
+                                                        .enumerate()
+                                                        .filter_map(|(i, e)| {
+                                                            if let Ok(start) =
+                                                                NaiveDateTime::parse_from_str(
+                                                                    &e.event.start.date_time,
+                                                                    "%Y-%m-%dT%H:%M:%S%.f",
+                                                                )
+                                                            {
+                                                                if start.date() == clicked_date {
+                                                                    // Reconstruct the event string to calculate height
+                                                                    let start_local = DateTime::<Utc>::from_naive_utc_and_offset(start, Utc)
+                                                                        .with_timezone(&Local);
+                                                                    let end_naive = NaiveDateTime::parse_from_str(&e.event.end.date_time, "%Y-%m-%dT%H:%M:%S%.f").unwrap_or(start);
+                                                                    let end_local = DateTime::<Utc>::from_naive_utc_and_offset(end_naive, Utc)
+                                                                        .with_timezone(&Local);
+                                                                    
+                                                                    let event_str = format!(
+                                                                        "■ {}-{} {}",
+                                                                        start_local.format("%H:%M"),
+                                                                        end_local.format("%H:%M"),
+                                                                        e.event.subject
+                                                                    );
+                                                                    return Some((i, event_str));
+                                                                }
+                                                            }
+                                                            None
+                                                        })
+                                                        .collect();
+
+                                                    // Get actual column width from the layout chunk
+                                                    let col_rect = col_chunks[col];
+                                                    let content_width = col_rect.width.saturating_sub(2) as usize;
+
+                                                    let content_width = col_rect.width.saturating_sub(2) as usize;
+
+                                                    if local_y > 0 {
+                                                        let content_y = (local_y - 1) as usize; // Adjust for top border
+                                                        let mut accumulated_height = 0;
+
+                                                        for (index, text) in day_events {
+                                                            // Calculate wrapped height using word wrapping approximation
+                                                            let height = if content_width > 0 {
+                                                                let mut lines = 1;
+                                                                let mut current_line_len = 0;
+                                                                for word in text.split_whitespace() {
+                                                                    let word_len = UnicodeWidthStr::width(word);
+                                                                    if current_line_len + word_len + (if current_line_len > 0 { 1 } else { 0 }) > content_width {
+                                                                        lines += 1;
+                                                                        current_line_len = word_len;
+                                                                    } else {
+                                                                        current_line_len += word_len + (if current_line_len > 0 { 1 } else { 0 });
+                                                                    }
+                                                                }
+                                                                lines
+                                                            } else {
+                                                                1
+                                                            };
+                                                            
+                                                            if content_y >= accumulated_height && content_y < accumulated_height + height {
+                                                                app.event_list_state.select(Some(index));
+                                                                app.detail_view_scroll = 0;
+                                                                app.current_view = CurrentView::EventDetail;
+                                                                continue; 
+                                                            }
+                                                            accumulated_height += height;
+                                                        }
+                                                    }
+
                                                     // Switch to List View
                                                     app.displayed_date = clicked_date;
                                                     app.event_view_mode = EventViewMode::List;
@@ -432,8 +572,7 @@ pub async fn run_app(
                                                     needs_refresh = true;
                                                 }
                                             }
-                                        }
-                                    }
+                                            }
                                 }
                                 _ => {}
                             }

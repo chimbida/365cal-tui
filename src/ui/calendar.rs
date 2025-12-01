@@ -71,6 +71,7 @@ pub fn draw_month_view(
         .border_style(Style::default().fg(theme.mauve));
     let inner_area = main_block.inner(area);
     f.render_widget(main_block, area);
+    app.event_list_area = area;
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(1), Constraint::Min(0)].as_ref())
@@ -111,7 +112,7 @@ pub fn draw_month_view(
                     day_style = Style::default().fg(theme.background).bg(theme.blue).bold();
                 }
                 let mut day_events_text = vec![Line::from(Span::styled(day_number, day_style))];
-                for color_event in &app.events {
+                for (i, color_event) in app.events.iter().enumerate() {
                     let e = &color_event.event;
                     if let (Ok(start_naive), Ok(end_naive)) = (
                         NaiveDateTime::parse_from_str(&e.start.date_time, "%Y-%m-%dT%H:%M:%S%.f"),
@@ -124,13 +125,31 @@ pub fn draw_month_view(
                             let end_local =
                                 DateTime::<Utc>::from_naive_utc_and_offset(end_naive, Utc)
                                     .with_timezone(&Local);
+
+                            let is_selected = Some(i) == app.event_list_state.selected();
+                            let style = if is_selected {
+                                Style::default()
+                                    .fg(theme.background)
+                                    .bg(theme.blue)
+                                    .add_modifier(Modifier::BOLD)
+                            } else {
+                                Style::default().fg(color_event.color)
+                            };
+
                             let event_line = Line::from(vec![
-                                Span::styled("■ ", Style::default().fg(color_event.color)),
-                                Span::raw(format!(
-                                    "{}-{}",
-                                    start_local.format("%H:%M"),
-                                    end_local.format("%H:%M")
-                                )),
+                                Span::styled("■ ", style),
+                                Span::styled(
+                                    format!(
+                                        "{}-{}",
+                                        start_local.format("%H:%M"),
+                                        end_local.format("%H:%M")
+                                    ),
+                                    if is_selected {
+                                        style
+                                    } else {
+                                        Style::default().fg(theme.foreground)
+                                    },
+                                ),
                             ]);
                             day_events_text.push(event_line);
                         }
@@ -173,6 +192,7 @@ pub fn draw_week_view(
         .border_style(Style::default().fg(theme.mauve));
     let inner_area = main_block.inner(area);
     f.render_widget(main_block, area);
+    app.event_list_area = area;
     let day_chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints(vec![Constraint::Ratio(1, 7); 7])
@@ -190,7 +210,7 @@ pub fn draw_week_view(
             day_style,
         );
         let mut day_events_text = vec![];
-        for color_event in &app.events {
+        for (i, color_event) in app.events.iter().enumerate() {
             let e = &color_event.event;
             if let (Ok(start_naive), Ok(end_naive)) = (
                 NaiveDateTime::parse_from_str(&e.start.date_time, "%Y-%m-%dT%H:%M:%S%.f"),
@@ -201,14 +221,32 @@ pub fn draw_week_view(
                         .with_timezone(&Local);
                     let end_local = DateTime::<Utc>::from_naive_utc_and_offset(end_naive, Utc)
                         .with_timezone(&Local);
+
+                    let is_selected = Some(i) == app.event_list_state.selected();
+                    let style = if is_selected {
+                        Style::default()
+                            .fg(theme.background)
+                            .bg(theme.blue)
+                            .add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(color_event.color)
+                    };
+
                     let event_line = Line::from(vec![
-                        Span::styled("■ ", Style::default().fg(color_event.color)),
-                        Span::raw(format!(
-                            "{}-{} {}",
-                            start_local.format("%H:%M"),
-                            end_local.format("%H:%M"),
-                            e.subject
-                        )),
+                        Span::styled("■ ", style),
+                        Span::styled(
+                            format!(
+                                "{}-{} {}",
+                                start_local.format("%H:%M"),
+                                end_local.format("%H:%M"),
+                                e.subject
+                            ),
+                            if is_selected {
+                                style
+                            } else {
+                                Style::default().fg(theme.foreground)
+                            },
+                        ),
                     ]);
                     day_events_text.push(event_line);
                 }
@@ -251,6 +289,7 @@ pub fn draw_work_week_view(
         .border_style(Style::default().fg(theme.mauve));
     let inner_area = main_block.inner(area);
     f.render_widget(main_block, area);
+    app.event_list_area = area;
     let day_chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints(vec![Constraint::Ratio(1, 5); 5])
@@ -268,7 +307,7 @@ pub fn draw_work_week_view(
             day_style,
         );
         let mut day_events_text = vec![];
-        for color_event in &app.events {
+        for (i, color_event) in app.events.iter().enumerate() {
             let e = &color_event.event;
             if let (Ok(start_naive), Ok(end_naive)) = (
                 NaiveDateTime::parse_from_str(&e.start.date_time, "%Y-%m-%dT%H:%M:%S%.f"),
@@ -279,14 +318,32 @@ pub fn draw_work_week_view(
                         .with_timezone(&Local);
                     let end_local = DateTime::<Utc>::from_naive_utc_and_offset(end_naive, Utc)
                         .with_timezone(&Local);
+
+                    let is_selected = Some(i) == app.event_list_state.selected();
+                    let style = if is_selected {
+                        Style::default()
+                            .fg(theme.background)
+                            .bg(theme.blue)
+                            .add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(color_event.color)
+                    };
+
                     let event_line = Line::from(vec![
-                        Span::styled("■ ", Style::default().fg(color_event.color)),
-                        Span::raw(format!(
-                            "{}-{} {}",
-                            start_local.format("%H:%M"),
-                            end_local.format("%H:%M"),
-                            e.subject
-                        )),
+                        Span::styled("■ ", style),
+                        Span::styled(
+                            format!(
+                                "{}-{} {}",
+                                start_local.format("%H:%M"),
+                                end_local.format("%H:%M"),
+                                e.subject
+                            ),
+                            if is_selected {
+                                style
+                            } else {
+                                Style::default().fg(theme.foreground)
+                            },
+                        ),
                     ]);
                     day_events_text.push(event_line);
                 }
