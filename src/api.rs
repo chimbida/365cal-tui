@@ -1,9 +1,9 @@
 use chrono::{DateTime, Utc};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 // --- Data Structures for Deserializing API Responses ---
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GraphCalendar {
     pub id: String,
     pub name: String,
@@ -16,15 +16,16 @@ struct CalendarListResponse {
     value: Vec<GraphCalendar>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DateTimeTimeZone {
     pub date_time: String,
     pub _time_zone: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GraphEvent {
+    pub id: String,
     pub subject: String,
     pub start: DateTimeTimeZone,
     pub end: DateTimeTimeZone,
@@ -34,19 +35,19 @@ pub struct GraphEvent {
     pub attendees: Vec<Attendee>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ItemBody {
     pub content: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EmailAddress {
     pub name: String,
     pub address: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Attendee {
     pub email_address: Option<EmailAddress>,
@@ -63,7 +64,7 @@ struct EventListResponse {
 
 pub async fn list_calendars(
     access_token: &str,
-) -> Result<Vec<GraphCalendar>, Box<dyn std::error::Error>> {
+) -> Result<Vec<GraphCalendar>, Box<dyn std::error::Error + Send + Sync>> {
     let client = reqwest::Client::new();
     let response = client
         .get("https://graph.microsoft.com/v1.0/me/calendars")
@@ -79,7 +80,7 @@ pub async fn list_events(
     calendar_id: &str,
     start_date: DateTime<Utc>,
     end_date: DateTime<Utc>,
-) -> Result<Vec<GraphEvent>, Box<dyn std::error::Error>> {
+) -> Result<Vec<GraphEvent>, Box<dyn std::error::Error + Send + Sync>> {
     let client = reqwest::Client::new();
     let mut all_events = Vec::new();
 

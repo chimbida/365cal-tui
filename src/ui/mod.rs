@@ -1,18 +1,20 @@
 use crate::app::{App, CurrentView, EventViewMode};
-use chrono::Local;
+use chrono::{Datelike, Duration, Local, Weekday};
 use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Style},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, Paragraph, Row, Table, Widget},
+    widgets::{Block, Borders, Clear, Paragraph, Row, Table, Tabs, Widget},
     Frame,
 };
 
 pub mod calendar;
 pub mod event;
 
-use calendar::{draw_calendar_list, draw_month_view, draw_week_view, draw_work_week_view};
+use calendar::{
+    draw_calendar_list, draw_day_view, draw_month_view, draw_week_view, draw_work_week_view,
+};
 use event::{draw_event_detail_view, draw_event_list};
 
 pub struct Theme {
@@ -21,6 +23,10 @@ pub struct Theme {
     pub yellow: Color,
     pub blue: Color,
     pub mauve: Color,
+    pub green: Color,
+    pub red: Color,
+    pub peach: Color,
+    pub teal: Color,
 }
 
 impl Theme {
@@ -31,6 +37,10 @@ impl Theme {
             yellow: Color::Rgb(249, 226, 175),
             blue: Color::Rgb(137, 180, 250),
             mauve: Color::Rgb(203, 166, 247),
+            green: Color::Rgb(166, 227, 161),
+            red: Color::Rgb(243, 139, 168),
+            peach: Color::Rgb(250, 179, 135),
+            teal: Color::Rgb(148, 226, 213),
         }
     }
 }
@@ -61,25 +71,14 @@ pub fn ui(f: &mut Frame, app: &mut App, theme: &Theme) {
         f.size(),
     );
 
-    let show_legend = app.current_calendar_id.is_none()
-        && matches!(
-            app.current_view,
-            CurrentView::Events | CurrentView::EventDetail
-        );
-    let legend_height = if show_legend {
-        app.calendars.len() as u16 + 2
-    } else {
-        0
-    };
-
     let main_chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(1)
         .constraints(
             [
-                Constraint::Length(3),
-                Constraint::Min(0),
-                Constraint::Length(legend_height),
+                Constraint::Length(3), // Header
+                Constraint::Min(0),    // Content
+                Constraint::Length(1), // Footer
             ]
             .as_ref(),
         )
@@ -88,64 +87,98 @@ pub fn ui(f: &mut Frame, app: &mut App, theme: &Theme) {
     let header_chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
-            Constraint::Min(0),
-            Constraint::Length(22), // Help text
-            Constraint::Length(28), // Date/Time
+            Constraint::Length(66), // Tabs (tuned to 66 to remove extra space)
+            Constraint::Min(0),     // Title (takes remaining space)
         ])
         .split(main_chunks[0]);
 
-    // Title / Breadcrumbs (Left)
-    // For now, just a spacer or we can put the current view name
-    let title_paragraph = Paragraph::new(match app.current_view {
-        CurrentView::Calendars => "  Calendars",
-        CurrentView::Events => "  Events",
-        CurrentView::EventDetail => "  Details",
-    })
-    .style(
-        Style::default()
-            .fg(theme.mauve)
-            .add_modifier(ratatui::style::Modifier::BOLD),
-    )
-    .block(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(theme.mauve)),
-    );
-    f.render_widget(title_paragraph, header_chunks[0]);
+    // Tabs (Left)
+    // Tabs (Left)
+    let selected_index = match app.current_view {
+        CurrentView::Calendars => 0,
+        CurrentView::Events | CurrentView::EventDetail => match app.event_view_mode {
+            EventViewMode::List => 1,
+            EventViewMode::Week => 2,
+            EventViewMode::WorkWeek => 3,
+            EventViewMode::Day => 4,
+            EventViewMode::Month => 5,
+        },
+    };
 
-    // Help Text (Middle/Right)
-    let help_text = "  Press ? for help ";
+    let tab_data = vec![
+        ("  Cals ", theme.blue),
+        ("  List ", theme.green),
+        ("  Week ", theme.yellow),
+        ("  Work ", theme.peach),
+        ("  Day ", theme.teal),
+        ("  Month ", theme.red),
+    ];
+
+    let active_color = tab_data[selected_index].1;
+
+    let titles: Vec<Line> = tab_data
+        .iter()
+        .enumerate()
+        .map(|(i, (text, color))| {
+            if i == selected_index {
+                Line::from(Span::styled(
+                    *text,
+                    Style::default()
+                        .bg(*color)
+                        .fg(theme.background)
+                        .add_modifier(Modifier::BOLD),
+                ))
+            } else {
+                Line::from(Span::styled(
+                    *text,
+                    Style::default().fg(*color).add_modifier(Modifier::BOLD),
+                ))
+            }
+        })
+        .collect();
+
+    let tabs = Tabs::new(titles)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(theme.mauve)),
+        )
+        .select(selected_index)
+        .style(Style::default().fg(theme.foreground))
+        .highlight_style(
+            Style::default()
+                .add_modifier(Modifier::BOLD)
+                .bg(active_color)
+                .fg(theme.background),
+        )
+        .divider(Span::raw("|"));
+    f.render_widget(tabs, header_chunks[0]);
+
+    // Window Title (Moved to Footer)
+
+    // Footer Layout
+    let footer_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Length(10), // Help
+            Constraint::Min(0),     // Title
+            Constraint::Length(20), // Date/Time
+        ])
+        .split(main_chunks[2]);
+
+    // Help Text (Footer Left)
+    let help_text = " ? Help ";
     let help_paragraph = Paragraph::new(help_text)
         .style(Style::default().fg(theme.blue))
-        .alignment(Alignment::Center)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(theme.mauve)),
-        );
-    f.render_widget(help_paragraph, header_chunks[1]);
-    app.help_area = header_chunks[1];
+        .alignment(Alignment::Left);
+    f.render_widget(help_paragraph, footer_chunks[0]);
+    // Note: Help area for click detection might need adjustment if we want it clickable in footer
+    // For now, let's keep it clickable but we need to update app.help_area
+    app.help_area = footer_chunks[0];
 
-    // Date/Time (Right)
-    let now = Local::now();
-    let datetime_str = format!(
-        " {} {} ",
-        now.format(" %d/%m/%Y"),
-        now.format(" %H:%M:%S")
-    );
-    let datetime_paragraph = Paragraph::new(datetime_str)
-        .style(Style::default().fg(theme.foreground))
-        .alignment(Alignment::Right)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(theme.mauve)),
-        );
-    f.render_widget(datetime_paragraph, header_chunks[2]);
-
-    let content_area = main_chunks[1];
-    match app.current_view {
-        CurrentView::Calendars => draw_calendar_list(f, app, content_area, theme),
+    // Title (Footer Center/Right)
+    let title_text = match app.current_view {
+        CurrentView::Calendars => " Calendars ".to_string(),
         CurrentView::Events | CurrentView::EventDetail => {
             let calendar_name = app
                 .current_calendar_id
@@ -163,37 +196,123 @@ pub fn ui(f: &mut Frame, app: &mut App, theme: &Theme) {
                 .unwrap_or_else(|| "All Calendars".to_string());
 
             match app.event_view_mode {
-                EventViewMode::List => draw_event_list(f, app, content_area, theme, &calendar_name),
+                EventViewMode::List => format!(" {} ", calendar_name),
                 EventViewMode::Month => {
-                    draw_month_view(f, app, content_area, theme, &calendar_name)
+                    let displayed_date = app.displayed_date;
+                    let month_str = format!(
+                        "{} {}",
+                        [
+                            "",
+                            "January",
+                            "February",
+                            "March",
+                            "April",
+                            "May",
+                            "June",
+                            "July",
+                            "August",
+                            "September",
+                            "October",
+                            "November",
+                            "December"
+                        ][displayed_date.month() as usize],
+                        displayed_date.year()
+                    );
+                    format!(" {} - {} ", calendar_name, month_str)
                 }
-                EventViewMode::Week => draw_week_view(f, app, content_area, theme, &calendar_name),
+                EventViewMode::Week => {
+                    let mut week_start = app.displayed_date;
+                    while week_start.weekday() != Weekday::Sun {
+                        week_start = week_start.pred_opt().unwrap();
+                    }
+                    let week_end = week_start + Duration::days(6);
+                    format!(
+                        " {} ({} to {}) ",
+                        calendar_name,
+                        week_start.format("%d/%m"),
+                        week_end.format("%d/%m")
+                    )
+                }
                 EventViewMode::WorkWeek => {
-                    draw_work_week_view(f, app, content_area, theme, &calendar_name)
+                    let mut week_start = app.displayed_date;
+                    while week_start.weekday() != Weekday::Mon {
+                        week_start = week_start.pred_opt().unwrap();
+                    }
+                    let week_end = week_start + Duration::days(4);
+                    format!(
+                        " {} ({} to {}) ",
+                        calendar_name,
+                        week_start.format("%d/%m"),
+                        week_end.format("%d/%m")
+                    )
+                }
+                EventViewMode::Day => {
+                    let current_day = app.displayed_date;
+                    format!(
+                        " {} ({}) ",
+                        calendar_name,
+                        current_day.format("%a, %d %b %Y")
+                    )
                 }
             }
         }
-    }
+    };
 
-    if show_legend {
-        let legend_area = main_chunks[2];
-        let mut legend_lines: Vec<Line> = Vec::new();
-        for color_calendar in &app.calendars {
-            let line = Line::from(vec![
-                Span::styled("■ ", Style::default().fg(color_calendar.color)),
-                Span::raw(color_calendar.calendar.name.clone()),
-            ]);
-            legend_lines.push(line);
+    let title_paragraph = Paragraph::new(title_text)
+        .style(
+            Style::default()
+                .fg(theme.mauve)
+                .add_modifier(Modifier::BOLD),
+        )
+        .alignment(Alignment::Right)
+        .block(Block::default().borders(Borders::NONE));
+    f.render_widget(title_paragraph, footer_chunks[1]);
+
+    // Date/Time (Footer Right)
+    let now = Local::now();
+    let datetime_str = format!(" {} {} ", now.format("%d/%m"), now.format("%H:%M"));
+    let datetime_paragraph = Paragraph::new(datetime_str)
+        .style(Style::default().fg(theme.foreground))
+        .alignment(Alignment::Right);
+    f.render_widget(datetime_paragraph, footer_chunks[2]);
+
+    let content_area = main_chunks[1];
+    match app.current_view {
+        CurrentView::Calendars => draw_calendar_list(f, app, content_area, theme, active_color),
+        CurrentView::Events | CurrentView::EventDetail => {
+            let calendar_name = app
+                .current_calendar_id
+                .as_ref()
+                .and_then(|id| {
+                    if id == crate::app::MY_CALENDARS_ID {
+                        Some("My Calendars".to_string())
+                    } else {
+                        app.calendars
+                            .iter()
+                            .find(|c| &c.calendar.id == id)
+                            .map(|c| c.calendar.name.clone())
+                    }
+                })
+                .unwrap_or_else(|| "All Calendars".to_string());
+
+            match app.event_view_mode {
+                EventViewMode::List => {
+                    draw_event_list(f, app, content_area, theme, &calendar_name, active_color)
+                }
+                EventViewMode::Month => {
+                    draw_month_view(f, app, content_area, theme, &calendar_name, active_color)
+                }
+                EventViewMode::Week => {
+                    draw_week_view(f, app, content_area, theme, &calendar_name, active_color)
+                }
+                EventViewMode::WorkWeek => {
+                    draw_work_week_view(f, app, content_area, theme, &calendar_name, active_color)
+                }
+                EventViewMode::Day => {
+                    draw_day_view(f, app, content_area, theme, &calendar_name, active_color)
+                }
+            }
         }
-        let legend_paragraph = Paragraph::new(legend_lines)
-            .style(Style::default().fg(theme.foreground))
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(theme.mauve))
-                    .title("  Legend "),
-            );
-        f.render_widget(legend_paragraph, legend_area);
     }
 
     if let CurrentView::EventDetail = app.current_view {
@@ -210,12 +329,22 @@ pub fn ui(f: &mut Frame, app: &mut App, theme: &Theme) {
 
     if app.show_help {
         let area = centered_rect(60, 60, f.size());
-        draw_help_popup(f, area, theme);
+        draw_help_popup(f, app, area, theme);
     }
+
+    // Legend Popup removed (merged into Help)
 }
 
-fn draw_help_popup(f: &mut Frame, area: Rect, theme: &Theme) {
+fn draw_help_popup(f: &mut Frame, app: &App, area: Rect, theme: &Theme) {
     f.render_widget(Clear, area);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage(60), // Shortcuts
+            Constraint::Percentage(40), // Legend
+        ])
+        .split(area);
 
     let rows = vec![
         Row::new(vec!["Key", "Action"]),
@@ -251,7 +380,27 @@ fn draw_help_popup(f: &mut Frame, area: Rect, theme: &Theme) {
     .column_spacing(1)
     .style(Style::default().fg(theme.foreground));
 
-    f.render_widget(table, area);
+    f.render_widget(table, chunks[0]);
+
+    // Legend Section
+    let mut legend_lines: Vec<Line> = Vec::new();
+    for color_calendar in &app.calendars {
+        let line = Line::from(vec![
+            Span::styled("■ ", Style::default().fg(color_calendar.color)),
+            Span::raw(color_calendar.calendar.name.clone()),
+        ]);
+        legend_lines.push(line);
+    }
+
+    let legend_paragraph = Paragraph::new(legend_lines)
+        .style(Style::default().fg(theme.foreground))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(theme.mauve))
+                .title("  Legend "),
+        );
+    f.render_widget(legend_paragraph, chunks[1]);
 }
 
 struct DissolveEffect {

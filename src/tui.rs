@@ -21,7 +21,7 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 
 /// Asynchronously fetches events and handles token refresh logic.
-async fn refresh_events(app: &mut App) {
+async fn refresh_events(app: &mut App, tx: mpsc::Sender<AppEvent>) {
     let calendars_to_fetch = if let Some(id) = &app.current_calendar_id {
         if id == MY_CALENDARS_ID {
             app.calendars
@@ -41,73 +41,78 @@ async fn refresh_events(app: &mut App) {
     };
 
     let (start_date, end_date) = get_view_date_range(app);
+    
+    // 1. Load from DB (Instant)
+    let mut all_events = Vec::new();
+    for cal in &calendars_to_fetch {
+        if let Ok(events) = crate::db::get_events(&app.db_pool, &cal.calendar.id).await {
+             let color = cal.color;
+             all_events.extend(events.into_iter().map(|event| ColorEvent { event, color }));
+        }
+    }
+    
+    if !all_events.is_empty() {
+        all_events.sort_by(|a, b| a.event.start.date_time.cmp(&b.event.start.date_time));
+        app.events = all_events;
+        if app.event_list_state.selected().is_none() {
+            app.event_list_state.select(Some(0));
+        }
+    }
+
     info!(
         "Refreshing events for {} calendars...",
         calendars_to_fetch.len()
     );
 
-    // --- NEW LOGIC: API Call with Retry-on-Refresh ---
-    let mut futures = Vec::new();
-    for color_cal in &calendars_to_fetch {
-        futures.push(list_events(
-            &app.access_token,
-            &color_cal.calendar.id,
-            start_date,
-            end_date,
-        ));
-    }
-    let mut results = join_all(futures).await;
-
-    // Check if any of the results failed due to an authorization error.
-    let needs_token_refresh = results.iter().any(|res| {
-        if let Err(err) = res {
-            if let Some(req_err) = err.downcast_ref::<reqwest::Error>() {
-                return req_err.status() == Some(reqwest::StatusCode::UNAUTHORIZED);
+    // 2. Spawn API Fetch (Background)
+    let access_token = app.access_token.clone();
+    let db_pool = app.db_pool.clone();
+    let calendars = calendars_to_fetch;
+    let tx_clone = tx.clone();
+    
+    tokio::spawn(async move {
+        let mut futures = Vec::new();
+        for color_cal in &calendars {
+            futures.push(list_events(
+                &access_token,
+                &color_cal.calendar.id,
+                start_date,
+                end_date,
+            ));
+        }
+        let results = join_all(futures).await;
+        
+        let needs_token_refresh = results.iter().any(|res| {
+            if let Err(err) = res {
+                if let Some(req_err) = err.downcast_ref::<reqwest::Error>() {
+                    return req_err.status() == Some(reqwest::StatusCode::UNAUTHORIZED);
+                }
+            }
+            false
+        });
+        
+        if needs_token_refresh {
+            warn!("Access token expired. Requesting refresh.");
+            let _ = tx_clone.send(AppEvent::TokenExpired).await;
+            return;
+        }
+        
+        let mut fetched_events = Vec::new();
+        for (i, result) in results.into_iter().enumerate() {
+            match result {
+                Ok(events) => {
+                    if let Err(e) = crate::db::save_events(&db_pool, &events, &calendars[i].calendar.id).await {
+                        error!("Failed to save events to DB: {}", e);
+                    }
+                    let color = calendars[i].color;
+                    fetched_events.extend(events.into_iter().map(|event| ColorEvent { event, color }));
+                }
+                Err(e) => error!("Error fetching events: {}", e),
             }
         }
-        false
+        
+        let _ = tx_clone.send(AppEvent::EventsLoaded(fetched_events)).await;
     });
-
-    // If a token refresh is needed, attempt it and retry the API calls.
-    if needs_token_refresh {
-        warn!("Access token expired or invalid. Attempting to refresh...");
-        if app.refresh_auth_token().await.is_ok() {
-            info!("Token refreshed successfully. Retrying API calls...");
-            let retry_futures = calendars_to_fetch.iter().map(|color_cal| {
-                list_events(
-                    &app.access_token,
-                    &color_cal.calendar.id,
-                    start_date,
-                    end_date,
-                )
-            });
-            results = join_all(retry_futures).await;
-        } else {
-            error!("Failed to refresh token. User might need to log in again.");
-            return; // Stop processing if refresh fails.
-        }
-    }
-
-    // Process the final results.
-    let mut all_events: Vec<ColorEvent> = Vec::new();
-    for (i, result) in results.into_iter().enumerate() {
-        match result {
-            Ok(events) => {
-                let color = calendars_to_fetch[i].color;
-                all_events.extend(events.into_iter().map(|event| ColorEvent { event, color }));
-            }
-            Err(e) => error!("Error fetching events for a calendar: {}", e),
-        }
-    }
-
-    all_events.sort_by(|a, b| a.event.start.date_time.cmp(&b.event.start.date_time));
-    app.events = all_events;
-
-    if !app.events.is_empty() {
-        app.event_list_state.select(Some(0));
-    } else {
-        app.event_list_state.select(None);
-    }
 }
 
 /// The main application loop. Handles events and updates the app state.
@@ -115,11 +120,12 @@ pub async fn run_app(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     app: &mut App,
     mut rx: mpsc::Receiver<AppEvent>,
+    tx: mpsc::Sender<AppEvent>,
 ) -> io::Result<()> {
     let theme = Theme::catppuccin_mocha();
 
     if !app.calendars.is_empty() {
-        refresh_events(app).await;
+        refresh_events(app, tx.clone()).await;
     }
 
     app.start_transition(500);
@@ -161,8 +167,27 @@ pub async fn run_app(
                         continue;
                     }
 
+                    if app.show_legend {
+                        match key.code {
+                            KeyCode::Esc
+                            | KeyCode::Char('q')
+                            | KeyCode::Char('l')
+                            | KeyCode::Char('L')
+                            | KeyCode::Enter => {
+                                app.show_legend = false;
+                            }
+                            _ => {}
+                        }
+                        continue;
+                    }
+
                     if let KeyCode::Char('?') = key.code {
                         app.show_help = true;
+                        continue;
+                    }
+
+                    if let KeyCode::Char('l') | KeyCode::Char('L') = key.code {
+                        app.show_legend = true;
                         continue;
                     }
 
@@ -191,7 +216,7 @@ pub async fn run_app(
                         },
                         CurrentView::Events => match key.code {
                             KeyCode::Char('q') => return Ok(()),
-                            KeyCode::Char('b') => {
+                            KeyCode::Char('b') | KeyCode::Esc => {
                                 app.current_view = CurrentView::Calendars;
                                 app.event_view_mode = EventViewMode::List;
                                 app.displayed_date = Local::now().date_naive();
@@ -218,6 +243,10 @@ pub async fn run_app(
                                     EventViewMode::Week | EventViewMode::WorkWeek => {
                                         app.previous_week()
                                     }
+                                    EventViewMode::Day => {
+                                        app.displayed_date =
+                                            app.displayed_date.pred_opt().unwrap();
+                                    }
                                 }
                                 needs_refresh = true;
                             }
@@ -226,6 +255,10 @@ pub async fn run_app(
                                     EventViewMode::List | EventViewMode::Month => app.next_month(),
                                     EventViewMode::Week | EventViewMode::WorkWeek => {
                                         app.next_week()
+                                    }
+                                    EventViewMode::Day => {
+                                        app.displayed_date =
+                                            app.displayed_date.succ_opt().unwrap();
                                     }
                                 }
                                 needs_refresh = true;
@@ -236,7 +269,7 @@ pub async fn run_app(
                         },
                         CurrentView::EventDetail => match key.code {
                             KeyCode::Char('q') => return Ok(()),
-                            KeyCode::Char('b') => {
+                            KeyCode::Char('b') | KeyCode::Esc => {
                                 app.current_view = CurrentView::Events;
                                 app.start_transition(300);
                             }
@@ -255,6 +288,14 @@ pub async fn run_app(
                         continue;
                     }
 
+                    if app.show_legend {
+                        // Click anywhere to close legend
+                        if let MouseEventKind::Down(_) = mouse.kind {
+                            app.show_legend = false;
+                        }
+                        continue;
+                    }
+
                     match mouse.kind {
                         MouseEventKind::Down(MouseButton::Left) => {
                             let x = mouse.column;
@@ -269,6 +310,60 @@ pub async fn run_app(
                             {
                                 app.show_help = true;
                                 continue;
+                            }
+
+
+                            // Check for Tabs Click
+                            // Replicate layout logic to find tabs area
+                            let size = terminal.size()?;
+                            let main_chunks = Layout::default()
+                                .direction(Direction::Vertical)
+                                .margin(1)
+                                .constraints([Constraint::Length(3), Constraint::Min(0)].as_ref())
+                                .split(size);
+                            let header_chunks = Layout::default()
+                                .direction(Direction::Horizontal)
+                                .constraints([
+                                    Constraint::Min(0),
+                                    Constraint::Length(14),
+                                    Constraint::Length(16),
+                                    Constraint::Length(22),
+                                ])
+                                .split(main_chunks[0]);
+                            
+                            let tabs_area = header_chunks[0];
+                            if x >= tabs_area.left() && x < tabs_area.right() && y >= tabs_area.top() && y < tabs_area.bottom() {
+                                // Inside tabs area
+                                // Revert to logic compatible with Tabs widget
+                                let relative_x = x.saturating_sub(tabs_area.left() + 1); // +1 for left border
+                                
+                                let tab_data = [
+                                    ("  Cals", CurrentView::Calendars, None),
+                                    ("  List", CurrentView::Events, Some(EventViewMode::List)),
+                                    ("  Week", CurrentView::Events, Some(EventViewMode::Week)),
+                                    ("  Work", CurrentView::Events, Some(EventViewMode::WorkWeek)),
+                                    (" 🗓 Day", CurrentView::Events, Some(EventViewMode::Day)),
+                                    ("  Month", CurrentView::Events, Some(EventViewMode::Month)),
+                                ];
+
+                                let mut current_width_sum = 0;
+                                for (text, view, mode) in tab_data.iter() {
+                                    // Width = text length + 3 (divider " | ")
+                                    // Note: This is an approximation. Tabs widget might render differently.
+                                    // But since we use tight constraints, it should be close.
+                                    let width = text.len() as u16 + 3; 
+                                    
+                                    if relative_x < current_width_sum + width {
+                                        // Clicked this tab
+                                        app.current_view = *view;
+                                        if let Some(m) = mode {
+                                            app.event_view_mode = *m;
+                                            refresh_events(app, tx.clone()).await;
+                                        }
+                                        break;
+                                    }
+                                    current_width_sum += width;
+                                }
                             }
 
                             match app.current_view {
@@ -530,8 +625,6 @@ pub async fn run_app(
                                                     let col_rect = col_chunks[col];
                                                     let content_width = col_rect.width.saturating_sub(2) as usize;
 
-                                                    let content_width = col_rect.width.saturating_sub(2) as usize;
-
                                                     if local_y > 0 {
                                                         let content_y = (local_y - 1) as usize; // Adjust for top border
                                                         let mut accumulated_height = 0;
@@ -572,7 +665,88 @@ pub async fn run_app(
                                                     needs_refresh = true;
                                                 }
                                             }
+                                        } else if let EventViewMode::Day = app.event_view_mode {
+                                            // Day View Click Logic
+                                            let inner_area = app.event_list_area.inner(
+                                                ratatui::layout::Margin {
+                                                    vertical: 1,
+                                                    horizontal: 1,
+                                                },
+                                            );
+                                            if x >= inner_area.left()
+                                                && x < inner_area.right()
+                                                && y >= inner_area.top()
+                                                && y < inner_area.bottom()
+                                            {
+                                                let clicked_date = app.displayed_date;
+                                                let local_y = y - inner_area.top();
+
+                                                // Filter events for this day
+                                                let day_events: Vec<(usize, String)> = app
+                                                    .events
+                                                    .iter()
+                                                    .enumerate()
+                                                    .filter_map(|(i, e)| {
+                                                        if let Ok(start) =
+                                                            NaiveDateTime::parse_from_str(
+                                                                &e.event.start.date_time,
+                                                                "%Y-%m-%dT%H:%M:%S%.f",
+                                                            )
+                                                        {
+                                                            if start.date() == clicked_date {
+                                                                let start_local = DateTime::<Utc>::from_naive_utc_and_offset(start, Utc)
+                                                                    .with_timezone(&Local);
+                                                                let end_naive = NaiveDateTime::parse_from_str(&e.event.end.date_time, "%Y-%m-%dT%H:%M:%S%.f").unwrap_or(start);
+                                                                let end_local = DateTime::<Utc>::from_naive_utc_and_offset(end_naive, Utc)
+                                                                    .with_timezone(&Local);
+                                                                
+                                                                let event_str = format!(
+                                                                    "■ {}-{} {}",
+                                                                    start_local.format("%H:%M"),
+                                                                    end_local.format("%H:%M"),
+                                                                    e.event.subject
+                                                                );
+                                                                return Some((i, event_str));
+                                                            }
+                                                        }
+                                                        None
+                                                    })
+                                                    .collect();
+
+                                                let content_width = inner_area.width as usize;
+
+                                                // No extra top border inside inner_area
+                                                let content_y = local_y as usize;
+                                                let mut accumulated_height = 0;
+
+                                                    for (index, text) in day_events {
+                                                        let height = if content_width > 0 {
+                                                            let mut lines = 1;
+                                                            let mut current_line_len = 0;
+                                                            for word in text.split_whitespace() {
+                                                                let word_len = UnicodeWidthStr::width(word);
+                                                                if current_line_len + word_len + (if current_line_len > 0 { 1 } else { 0 }) > content_width {
+                                                                    lines += 1;
+                                                                    current_line_len = word_len;
+                                                                } else {
+                                                                    current_line_len += word_len + (if current_line_len > 0 { 1 } else { 0 });
+                                                                }
+                                                            }
+                                                            lines
+                                                        } else {
+                                                            1
+                                                        };
+                                                        
+                                                        if content_y >= accumulated_height && content_y < accumulated_height + height {
+                                                            app.event_list_state.select(Some(index));
+                                                            app.detail_view_scroll = 0;
+                                                            app.current_view = CurrentView::EventDetail;
+                                                            continue; 
+                                                        }
+                                                        accumulated_height += height;
+                                                    }
                                             }
+                                        }
                                 }
                                 _ => {}
                             }
@@ -592,6 +766,11 @@ pub async fn run_app(
                                             }
                                             EventViewMode::Week | EventViewMode::WorkWeek => {
                                                 app.next_week();
+                                                needs_refresh = true;
+                                            }
+                                            EventViewMode::Day => {
+                                                app.displayed_date =
+                                                    app.displayed_date.succ_opt().unwrap();
                                                 needs_refresh = true;
                                             }
                                             _ => {}
@@ -616,6 +795,11 @@ pub async fn run_app(
                                             app.previous_week();
                                             needs_refresh = true;
                                         }
+                                        EventViewMode::Day => {
+                                            app.displayed_date =
+                                                app.displayed_date.pred_opt().unwrap();
+                                            needs_refresh = true;
+                                        }
                                         _ => {}
                                     }
                                 }
@@ -637,11 +821,33 @@ pub async fn run_app(
                         needs_refresh = true;
                     }
                 }
+                AppEvent::EventsLoaded(mut events) => {
+                    events.sort_by(|a, b| a.event.start.date_time.cmp(&b.event.start.date_time));
+                    app.events = events;
+                    if !app.events.is_empty() {
+                        app.event_list_state.select(Some(0));
+                    } else {
+                        app.event_list_state.select(None);
+                    }
+                }
+                AppEvent::TokenExpired => {
+                    warn!("Token expired. Refreshing...");
+                    if app.refresh_auth_token().await.is_ok() {
+                        info!("Token refreshed. Retrying refresh...");
+                        // We can't easily trigger refresh here because we are in the loop.
+                        // But we can set needs_refresh = true?
+                        // No, needs_refresh calls refresh_events which spawns task.
+                        // So yes, needs_refresh = true works.
+                        needs_refresh = true;
+                    } else {
+                        error!("Failed to refresh token.");
+                    }
+                }
             }
         }
 
         if needs_refresh {
-            refresh_events(app).await;
+            refresh_events(app, tx.clone()).await;
         }
     }
 }
@@ -679,6 +885,11 @@ fn get_view_date_range(app: &App) -> (DateTime<Utc>, DateTime<Utc>) {
                 start = start.pred_opt().unwrap();
             }
             let end = start + ChronoDuration::days(5);
+            (to_utc(start), to_utc(end))
+        }
+        EventViewMode::Day => {
+            let start = app.displayed_date;
+            let end = start + ChronoDuration::days(1);
             (to_utc(start), to_utc(end))
         }
     }

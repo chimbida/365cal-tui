@@ -5,7 +5,9 @@ use ratatui::{
     layout::Rect,
     style::{Modifier, Style, Stylize},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap},
+    widgets::{
+        Block, Borders, Clear, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, Wrap,
+    },
     Frame,
 };
 
@@ -14,7 +16,8 @@ pub fn draw_event_list(
     app: &mut App,
     area: Rect,
     theme: &Theme,
-    calendar_name: &str,
+    _calendar_name: &str,
+    border_color: ratatui::style::Color,
 ) {
     let items: Vec<ListItem> = app
         .events
@@ -48,7 +51,7 @@ pub fn draw_event_list(
         })
         .collect();
 
-    let month_str = format!(
+    let _month_str = format!(
         "{} {}",
         [
             "",
@@ -67,14 +70,13 @@ pub fn draw_event_list(
         ][app.displayed_date.month() as usize],
         app.displayed_date.year()
     );
-    let title = format!("  Event List for '{}' - {} ", calendar_name, month_str);
 
+    let items_len = items.len();
     let list = List::new(items)
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(theme.mauve))
-                .title(title),
+                .border_style(Style::default().fg(border_color)),
         )
         .highlight_style(
             Style::default()
@@ -84,6 +86,20 @@ pub fn draw_event_list(
         .highlight_symbol("❯ ");
     app.event_list_area = area;
     f.render_stateful_widget(list, area, &mut app.event_list_state);
+
+    app.event_list_scroll_state = app
+        .event_list_scroll_state
+        .content_length(items_len)
+        .position(app.event_list_state.selected().unwrap_or(0));
+
+    f.render_stateful_widget(
+        Scrollbar::default()
+            .orientation(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(Some("↑"))
+            .end_symbol(Some("↓")),
+        area,
+        &mut app.event_list_scroll_state,
+    );
 }
 
 pub fn draw_event_detail_view(f: &mut Frame, app: &mut App, area: Rect, theme: &Theme) {
@@ -161,10 +177,25 @@ pub fn draw_event_detail_view(f: &mut Frame, app: &mut App, area: Rect, theme: &
         text.push(Line::from("Error: No event selected."));
     }
 
+    let text_len = text.len();
     let paragraph = Paragraph::new(text)
         .style(Style::default().fg(theme.foreground))
         .block(block)
         .wrap(Wrap { trim: false })
         .scroll((app.detail_view_scroll, 0));
     f.render_widget(paragraph, area);
+
+    app.detail_scroll_state = app
+        .detail_scroll_state
+        .content_length(text_len)
+        .position(app.detail_view_scroll as usize);
+
+    f.render_stateful_widget(
+        Scrollbar::default()
+            .orientation(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(Some("↑"))
+            .end_symbol(Some("↓")),
+        area,
+        &mut app.detail_scroll_state,
+    );
 }

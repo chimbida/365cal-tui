@@ -3,8 +3,8 @@ use log::{info, warn};
 use oauth2::basic::BasicClient;
 use oauth2::reqwest::async_http_client;
 use oauth2::{
-    AuthUrl, AuthorizationCode, ClientId, CsrfToken, PkceCodeChallenge, RedirectUrl,
-    RefreshToken, Scope, TokenResponse, TokenUrl,
+    AuthUrl, AuthorizationCode, ClientId, CsrfToken, PkceCodeChallenge, RedirectUrl, RefreshToken,
+    Scope, TokenResponse, TokenUrl,
 };
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
@@ -33,19 +33,28 @@ pub fn delete_refresh_token() -> Result<(), keyring::Error> {
     entry.delete_password()
 }
 
-pub async fn authenticate(client_id_str: String) -> Result<String, Box<dyn std::error::Error>> {
+pub async fn authenticate(
+    client_id_str: String,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     let client_id = ClientId::new(client_id_str);
     let client_secret = None;
-    let auth_url = AuthUrl::new("https://login.microsoftonline.com/common/oauth2/v2.0/authorize".to_string())?;
-    let token_url = Some(TokenUrl::new("https://login.microsoftonline.com/common/oauth2/v2.0/token".to_string())?);
-    
+    let auth_url =
+        AuthUrl::new("https://login.microsoftonline.com/common/oauth2/v2.0/authorize".to_string())?;
+    let token_url = Some(TokenUrl::new(
+        "https://login.microsoftonline.com/common/oauth2/v2.0/token".to_string(),
+    )?);
+
     let redirect_url = RedirectUrl::new("http://localhost:8080".to_string())?;
-    
-    let client = BasicClient::new(client_id, client_secret, auth_url, token_url).set_redirect_uri(redirect_url);
+
+    let client = BasicClient::new(client_id, client_secret, auth_url, token_url)
+        .set_redirect_uri(redirect_url);
 
     if let Some(saved_refresh_token) = load_refresh_token() {
         info!("Attempting to refresh access token from system keyring...");
-        let token_result = client.exchange_refresh_token(&saved_refresh_token).request_async(async_http_client).await;
+        let token_result = client
+            .exchange_refresh_token(&saved_refresh_token)
+            .request_async(async_http_client)
+            .await;
         if let Ok(refreshed_token) = token_result {
             info!("Token refreshed successfully!");
             if let Some(new_refresh_token) = refreshed_token.refresh_token() {
@@ -59,11 +68,13 @@ pub async fn authenticate(client_id_str: String) -> Result<String, Box<dyn std::
     }
 
     let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
-    let (authorize_url, _csrf_state) = client.authorize_url(CsrfToken::new_random)
+    let (authorize_url, _csrf_state) = client
+        .authorize_url(CsrfToken::new_random)
         .add_scope(Scope::new("offline_access".to_string()))
         .add_scope(Scope::new("User.Read".to_string()))
         .add_scope(Scope::new("Calendars.Read".to_string()))
-        .set_pkce_challenge(pkce_challenge).url();
+        .set_pkce_challenge(pkce_challenge)
+        .url();
 
     info!("Open this URL in your browser to log in: {}", authorize_url);
     println!("To continue, please open your browser and log in...");
@@ -84,13 +95,20 @@ pub async fn authenticate(client_id_str: String) -> Result<String, Box<dyn std::
             }
         }
         let message = "Login successful! You can now close this tab.";
-        let response = format!("HTTP/1.1 200 OK\r\ncontent-length: {}\r\n\r\n{}", message.len(), message);
+        let response = format!(
+            "HTTP/1.1 200 OK\r\ncontent-length: {}\r\n\r\n{}",
+            message.len(),
+            message
+        );
         stream.write_all(response.as_bytes())?;
     }
 
     if let Some(code) = code_option {
-        let token_result = client.exchange_code(AuthorizationCode::new(code))
-            .set_pkce_verifier(pkce_verifier).request_async(async_http_client).await;
+        let token_result = client
+            .exchange_code(AuthorizationCode::new(code))
+            .set_pkce_verifier(pkce_verifier)
+            .request_async(async_http_client)
+            .await;
         if let Ok(token) = token_result {
             if let Some(refresh_token) = token.refresh_token() {
                 info!("Saving refresh token to system keyring...");

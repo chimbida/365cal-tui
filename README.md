@@ -12,6 +12,10 @@ The goal was simple: create a fast, keyboard-driven, and visually pleasing way t
 
 - **Modern TUI:** Built with Rust 🦀 and `ratatui` for a snappy, responsive terminal interface.
 - **Secure Microsoft 365 Login:** Uses the proper OAuth2 flow to connect to your account. Your credentials are never stored!
+- **Offline-First Architecture:** ⚡
+  - **Instant Startup:** Loads your calendar immediately from a local SQLite database.
+  - **Offline Access:** View your schedule even without an internet connection.
+  - **Background Sync:** Automatically fetches fresh data from Microsoft Graph in the background and updates the UI.
 - **Persistent Sessions:** Saves a secure refresh token in your operating system's native keyring (macOS Keychain, Windows Credential Manager, etc.), so you only have to log in through the browser once.
 - **Multiple Calendar Support:**
   - View a list of all your calendars.
@@ -24,6 +28,7 @@ The goal was simple: create a fast, keyboard-driven, and visually pleasing way t
   - **Month View:** A traditional grid-based monthly calendar.
   - **Week View:** A 7-day (Sun-Sat) detailed view.
   - **Work Week View:** A 5-day (Mon-Fri) view focused on the work week.
+  - **Day View:** A focused view for a single day's events.
 - **Seamless Navigation:**
   - `Tab` key to cycle through List, Month, Week, and Work Week views.
   - `A`/`D` keys to navigate between months or weeks.
@@ -34,8 +39,8 @@ The goal was simple: create a fast, keyboard-driven, and visually pleasing way t
     - Click the help button `[ ? ]` to view shortcuts.
     - Scroll wheel to navigate lists and details.
 - **Polished UI & UX:**
-  - **Help Popup:** Press `?` or click the help button to view keyboard shortcuts.
-  - A live clock and date display in the header.
+  - **Help Popup:** Press `?` or click the help button to view keyboard shortcuts and the calendar legend.
+  - **Clean Layout:** Minimized header with only navigation tabs. Title, help, and clock are neatly organized in the footer.
   - Beautiful [Catppuccin Mocha](https://github.com/catppuccin) color theme.
   - Glyphs and icons for a modern look (requires a [Nerd Font](https://www.nerdfonts.com/)).
   - A popup for viewing event details, including description and attendees.
@@ -138,6 +143,7 @@ When enabled, a `365cal-tui.log` file will be created in the project directory w
 This project stands on the shoulders of giants. Key dependencies include:
 
 - `ratatui` & `crossterm` for the TUI framework.
+- `sqlx` (SQLite) for local data caching and offline support.
 - `tokio` for the asynchronous runtime.
 - `reqwest` for making HTTP requests to the Graph API.
 - `oauth2` for handling the authentication flow.

@@ -6,7 +6,8 @@ use oauth2::{
 };
 use ratatui::layout::Rect;
 use ratatui::style::Color;
-use ratatui::widgets::ListState;
+use ratatui::widgets::{ListState, ScrollbarState};
+use sqlx::SqlitePool;
 use std::time::{Duration as StdDuration, Instant};
 
 pub const MY_CALENDARS_ID: &str = "MY_CALENDARS";
@@ -24,6 +25,7 @@ pub enum EventViewMode {
     Month,
     Week,
     WorkWeek,
+    Day,
 }
 
 /// The main screens of the application.
@@ -52,6 +54,11 @@ pub struct App {
     pub event_list_area: Rect,
     pub help_area: Rect,
     pub show_help: bool,
+    pub show_legend: bool,
+    pub calendar_list_scroll_state: ScrollbarState,
+    pub event_list_scroll_state: ScrollbarState,
+    pub detail_scroll_state: ScrollbarState,
+    pub db_pool: SqlitePool,
 }
 
 // CORRECTION: These structs are now public so other modules can use them.
@@ -68,7 +75,12 @@ pub struct ColorEvent {
 }
 
 impl App {
-    pub fn new(client_id: String, access_token: String, calendars: Vec<GraphCalendar>) -> Self {
+    pub fn new(
+        client_id: String,
+        access_token: String,
+        calendars: Vec<GraphCalendar>,
+        db_pool: SqlitePool,
+    ) -> Self {
         let mut calendar_list_state = ListState::default();
         calendar_list_state.select(Some(0));
 
@@ -113,6 +125,11 @@ impl App {
             event_list_area: Rect::default(),
             help_area: Rect::default(),
             show_help: false,
+            show_legend: false,
+            calendar_list_scroll_state: ScrollbarState::default(),
+            event_list_scroll_state: ScrollbarState::default(),
+            detail_scroll_state: ScrollbarState::default(),
+            db_pool,
         }
     }
 
@@ -159,10 +176,11 @@ impl App {
 
     pub fn toggle_event_view(&mut self) {
         self.event_view_mode = match self.event_view_mode {
-            EventViewMode::List => EventViewMode::Month,
-            EventViewMode::Month => EventViewMode::Week,
+            EventViewMode::List => EventViewMode::Week,
             EventViewMode::Week => EventViewMode::WorkWeek,
-            EventViewMode::WorkWeek => EventViewMode::List,
+            EventViewMode::WorkWeek => EventViewMode::Day,
+            EventViewMode::Day => EventViewMode::Month,
+            EventViewMode::Month => EventViewMode::List,
         };
         self.start_transition(300);
     }

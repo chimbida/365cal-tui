@@ -5,11 +5,17 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Modifier, Style, Stylize},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
+    widgets::{Block, Borders, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, Wrap},
     Frame,
 };
 
-pub fn draw_calendar_list(f: &mut Frame, app: &mut App, area: Rect, theme: &Theme) {
+pub fn draw_calendar_list(
+    f: &mut Frame,
+    app: &mut App,
+    area: Rect,
+    theme: &Theme,
+    border_color: ratatui::style::Color,
+) {
     let mut items: Vec<ListItem> = Vec::new();
     let all_calendars_style = Style::default()
         .fg(theme.foreground)
@@ -23,17 +29,31 @@ pub fn draw_calendar_list(f: &mut Frame, app: &mut App, area: Rect, theme: &Them
         ]);
         items.push(ListItem::new(line).style(Style::default().fg(theme.foreground)));
     }
+    let items_len = items.len();
     let list = List::new(items)
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(theme.mauve))
-                .title("  My Calendars "),
+                .border_style(Style::default().fg(border_color)),
         )
         .highlight_style(Style::default().fg(theme.blue).add_modifier(Modifier::BOLD))
         .highlight_symbol("❯ ");
     app.calendar_list_area = area;
     f.render_stateful_widget(list, area, &mut app.calendar_list_state);
+
+    app.calendar_list_scroll_state = app
+        .calendar_list_scroll_state
+        .content_length(items_len)
+        .position(app.calendar_list_state.selected().unwrap_or(0));
+
+    f.render_stateful_widget(
+        Scrollbar::default()
+            .orientation(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(Some("↑"))
+            .end_symbol(Some("↓")),
+        area,
+        &mut app.calendar_list_scroll_state,
+    );
 }
 
 pub fn draw_month_view(
@@ -41,11 +61,12 @@ pub fn draw_month_view(
     app: &mut App,
     area: Rect,
     theme: &Theme,
-    calendar_name: &str,
+    _calendar_name: &str,
+    border_color: ratatui::style::Color,
 ) {
     let today = Local::now().date_naive();
     let displayed_date = app.displayed_date;
-    let month_str = format!(
+    let _month_str = format!(
         "{} {}",
         [
             "",
@@ -64,11 +85,9 @@ pub fn draw_month_view(
         ][displayed_date.month() as usize],
         displayed_date.year()
     );
-    let title = format!("   Month View for '{}' - {} ", calendar_name, month_str);
     let main_block = Block::default()
-        .title(Span::styled(title, Style::default().fg(theme.blue).bold()))
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme.mauve));
+        .border_style(Style::default().fg(border_color));
     let inner_area = main_block.inner(area);
     f.render_widget(main_block, area);
     app.event_list_area = area;
@@ -172,24 +191,18 @@ pub fn draw_week_view(
     app: &mut App,
     area: Rect,
     theme: &Theme,
-    calendar_name: &str,
+    _calendar_name: &str,
+    border_color: ratatui::style::Color,
 ) {
     let today = Local::now().date_naive();
     let mut week_start = app.displayed_date;
     while week_start.weekday() != Weekday::Sun {
         week_start = week_start.pred_opt().unwrap();
     }
-    let week_end = week_start + ChronoDuration::days(6);
-    let title = format!(
-        "   Week View for '{}' ({} to {}) ",
-        calendar_name,
-        week_start.format("%d/%m"),
-        week_end.format("%d/%m")
-    );
+    let _week_end = week_start + ChronoDuration::days(6);
     let main_block = Block::default()
-        .title(Span::styled(title, Style::default().fg(theme.blue).bold()))
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme.mauve));
+        .border_style(Style::default().fg(border_color));
     let inner_area = main_block.inner(area);
     f.render_widget(main_block, area);
     app.event_list_area = area;
@@ -269,24 +282,18 @@ pub fn draw_work_week_view(
     app: &mut App,
     area: Rect,
     theme: &Theme,
-    calendar_name: &str,
+    _calendar_name: &str,
+    border_color: ratatui::style::Color,
 ) {
     let today = Local::now().date_naive();
     let mut week_start = app.displayed_date;
     while week_start.weekday() != Weekday::Mon {
         week_start = week_start.pred_opt().unwrap();
     }
-    let week_end = week_start + ChronoDuration::days(4);
-    let title = format!(
-        "   Work Week for '{}' ({} to {}) ",
-        calendar_name,
-        week_start.format("%d/%m"),
-        week_end.format("%d/%m")
-    );
+    let _week_end = week_start + ChronoDuration::days(4);
     let main_block = Block::default()
-        .title(Span::styled(title, Style::default().fg(theme.blue).bold()))
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme.mauve));
+        .border_style(Style::default().fg(border_color));
     let inner_area = main_block.inner(area);
     f.render_widget(main_block, area);
     app.event_list_area = area;
@@ -359,4 +366,71 @@ pub fn draw_work_week_view(
             .wrap(Wrap { trim: true });
         f.render_widget(paragraph, day_area);
     }
+}
+
+pub fn draw_day_view(
+    f: &mut Frame,
+    app: &mut App,
+    area: Rect,
+    theme: &Theme,
+    _calendar_name: &str,
+    border_color: ratatui::style::Color,
+) {
+    let _today = Local::now().date_naive();
+    let current_day = app.displayed_date;
+    let main_block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(border_color));
+    let inner_area = main_block.inner(area);
+    f.render_widget(main_block, area);
+    app.event_list_area = area;
+
+    let mut day_events_text = vec![];
+    for (i, color_event) in app.events.iter().enumerate() {
+        let e = &color_event.event;
+        if let (Ok(start_naive), Ok(end_naive)) = (
+            NaiveDateTime::parse_from_str(&e.start.date_time, "%Y-%m-%dT%H:%M:%S%.f"),
+            NaiveDateTime::parse_from_str(&e.end.date_time, "%Y-%m-%dT%H:%M:%S%.f"),
+        ) {
+            if start_naive.date() == current_day {
+                let start_local = DateTime::<Utc>::from_naive_utc_and_offset(start_naive, Utc)
+                    .with_timezone(&Local);
+                let end_local = DateTime::<Utc>::from_naive_utc_and_offset(end_naive, Utc)
+                    .with_timezone(&Local);
+
+                let is_selected = Some(i) == app.event_list_state.selected();
+                let style = if is_selected {
+                    Style::default()
+                        .fg(theme.background)
+                        .bg(theme.blue)
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(color_event.color)
+                };
+
+                let event_line = Line::from(vec![
+                    Span::styled("■ ", style),
+                    Span::styled(
+                        format!(
+                            "{}-{} {}",
+                            start_local.format("%H:%M"),
+                            end_local.format("%H:%M"),
+                            e.subject
+                        ),
+                        if is_selected {
+                            style
+                        } else {
+                            Style::default().fg(theme.foreground)
+                        },
+                    ),
+                ]);
+                day_events_text.push(event_line);
+            }
+        }
+    }
+
+    let paragraph = Paragraph::new(day_events_text)
+        .block(Block::default()) // No extra border inside
+        .wrap(Wrap { trim: true });
+    f.render_widget(paragraph, inner_area);
 }

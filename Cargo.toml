@@ -31,3 +31,4 @@ clap = { version = "4.5.4", features = ["derive"] }
 futures = "0.3"
 html2text = "0.16.4"
 unicode-width = "0.2.2"
+sqlx = { version = "0.8.6", features = ["sqlite", "runtime-tokio-rustls"] }
