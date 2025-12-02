@@ -1,7 +1,7 @@
 use crate::{
     api::list_events,
     app::{App, ColorEvent, CurrentView, EventViewMode, MY_CALENDARS_ID},
-    ui::{ui, Theme},
+    ui::ui,
     AppEvent,
 };
 use chrono::{

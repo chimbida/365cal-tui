@@ -34,103 +34,73 @@ pub struct Settings {
     pub enable_debug_log: Option<bool>,
     pub refresh_interval_minutes: Option<u64>,
     pub theme: Option<String>,
-    pub use_nerd_font: Option<bool>,
+    pub font: Option<String>,
+    pub use_nerd_font: Option<bool>, // Deprecated, kept for backward compatibility
     pub custom_themes: Option<HashMap<String, ConfigTheme>>,
     pub symbols: Option<ConfigSymbols>,
+    pub custom_fonts: Option<HashMap<String, ConfigSymbols>>,
 }
 
-pub fn get_config_path() -> Option<PathBuf> {
-    dirs::config_dir().map(|d| d.join("365cal-tui/Settings.toml"))
+pub fn get_config_dir() -> PathBuf {
+    let mut path = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
+    path.push("365cal-tui");
+    path
 }
 
-pub fn save_default_config() -> Result<(), std::io::Error> {
-    if let Some(path) = get_config_path() {
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
-        }
+fn save_default_config(config_path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+    if let Some(parent) = config_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
 
-        if !path.exists() {
-            let default_config = r##"# 365cal-tui Configuration
+    if !config_path.exists() {
+        let default_config = r##"# 365cal-tui Configuration
 
 # Azure Application (Client) ID
-# Register your app at https://portal.azure.com/
-# Select "Mobile and desktop applications" and add "http://localhost:8080" as Redirect URI.
+# Register your app at https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade
+# Select "Mobile and desktop applications" as the platform and http://localhost:8080 as the redirect URI.
 client_id = "YOUR_CLIENT_ID_HERE"
 
 # Refresh interval in minutes (default: 5)
 refresh_interval_minutes = 15
 
-# Enable debug logging to file (default: false)
+# Enable debug logging to 365cal-tui.log (default: false)
 enable_debug_log = false
 
-# Theme selection: "catppuccin", "dracula", "gruvbox" or a custom theme name (default: "catppuccin")
+# Theme selection: "catppuccin", "dracula", "gruvbox" (default: "catppuccin")
 theme = "catppuccin"
 
-# Use Nerd Font icons (default: true)
-use_nerd_font = true
+# Font/Symbol set selection: "nerd", "unicode", "ascii" (default: "nerd")
+# "nerd" requires a Nerd Font installed.
+font = "nerd"
 
-# Custom Themes
-[custom_themes.catppuccin]
-background = "#1e1e2e"
-foreground = "#cdd6f4"
-yellow = "#f9e2af"
-blue = "#89b4fa"
-mauve = "#cba6f7"
-green = "#a6e3a1"
-red = "#f38ba8"
-peach = "#fab387"
-teal = "#94e2d5"
+# [custom_themes.my_theme]
+# background = "#000000"
+# foreground = "#FFFFFF"
+# ...
 
-[custom_themes.dracula]
-background = "#282a36"
-foreground = "#f8f8f2"
-yellow = "#f1fa8c"
-blue = "#8be9fd"
-mauve = "#bd93f9"
-green = "#50fa7b"
-red = "#ff5555"
-peach = "#ffb86c"
-teal = "#8be9fd"
-
-[custom_themes.gruvbox]
-background = "#282828"
-foreground = "#ebdbb2"
-yellow = "#fabd2f"
-blue = "#83a598"
-mauve = "#d3869b"
-green = "#b8bb26"
-red = "#fb4934"
-peach = "#fe8019"
-teal = "#8ec07c"
-
-# Custom Symbols Example
-# [symbols]
-# calendar = "📅"
-# clock = "🕒"
+# [custom_fonts.my_font]
+# calendar = "C"
+# clock = "T"
 # help = "?"
-# left_arrow = "◄"
-# right_arrow = "►"
-# up_arrow = "▲"
-# down_arrow = "▼"
+# left_arrow = "<"
+# right_arrow = ">"
+# up_arrow = "^"
+# down_arrow = "v"
 "##;
-            let mut file = fs::File::create(path)?;
-            file.write_all(default_config.as_bytes())?;
-        }
+        let mut file = fs::File::create(config_path)?;
+        file.write_all(default_config.as_bytes())?;
     }
     Ok(())
 }
 
 pub fn load_config() -> Result<Settings, config::ConfigError> {
+    let config_dir = get_config_dir();
+    let config_path = config_dir.join("Settings.toml");
+
     // Ensure config exists
-    if let Err(e) = save_default_config() {
+    if let Err(e) = save_default_config(&config_path) {
         eprintln!("Failed to create default config: {}", e);
     }
-
-    let config_dir = dirs::config_dir().ok_or_else(|| {
-        config::ConfigError::Message("Could not find the config directory.".into())
-    })?;
-
-    let config_path = config_dir.join("365cal-tui/Settings.toml");
 
     let settings = config::Config::builder()
         .add_source(config::File::from(config_path).required(true))

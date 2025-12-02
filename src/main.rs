@@ -100,72 +100,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let use_nerd_font = settings.use_nerd_font.unwrap_or(true);
 
     // Load symbols from config or use defaults based on nerd font setting
-    let symbols = if let Some(config_symbols) = settings.symbols {
-        ui::Symbols {
-            calendar: config_symbols.calendar.unwrap_or_else(|| {
-                if use_nerd_font {
-                    ui::Symbols::nerd_font().calendar
-                } else {
-                    ui::Symbols::default().calendar
-                }
-            }),
-            clock: config_symbols.clock.unwrap_or_else(|| {
-                if use_nerd_font {
-                    ui::Symbols::nerd_font().clock
-                } else {
-                    ui::Symbols::default().clock
-                }
-            }),
-            help: config_symbols.help.unwrap_or_else(|| {
-                if use_nerd_font {
-                    ui::Symbols::nerd_font().help
-                } else {
-                    ui::Symbols::default().help
-                }
-            }),
-            left_arrow: config_symbols.left_arrow.unwrap_or_else(|| {
-                if use_nerd_font {
-                    ui::Symbols::nerd_font().left_arrow
-                } else {
-                    ui::Symbols::default().left_arrow
-                }
-            }),
-            right_arrow: config_symbols.right_arrow.unwrap_or_else(|| {
-                if use_nerd_font {
-                    ui::Symbols::nerd_font().right_arrow
-                } else {
-                    ui::Symbols::default().right_arrow
-                }
-            }),
-            up_arrow: config_symbols.up_arrow.unwrap_or_else(|| {
-                if use_nerd_font {
-                    ui::Symbols::nerd_font().up_arrow
-                } else {
-                    ui::Symbols::default().up_arrow
-                }
-            }),
-            down_arrow: config_symbols.down_arrow.unwrap_or_else(|| {
-                if use_nerd_font {
-                    ui::Symbols::nerd_font().down_arrow
-                } else {
-                    ui::Symbols::default().down_arrow
-                }
-            }),
-        }
-    } else if use_nerd_font {
-        ui::Symbols::nerd_font()
+    // Load symbols
+    let mut symbols = if let Some(font_name) = &settings.font {
+        ui::Symbols::from_string(font_name, &settings.custom_fonts)
+    } else if !use_nerd_font {
+        ui::Symbols::unicode()
     } else {
-        ui::Symbols::default()
+        ui::Symbols::nerd_font()
     };
 
-    let mut app = app::App::new(
-        client_id_for_app,
-        access_token,
-        db_pool,
-        theme,
-        use_nerd_font,
-        symbols,
-    );
+    // Apply overrides from [symbols] section
+    if let Some(config_symbols) = settings.symbols {
+        if let Some(s) = config_symbols.calendar {
+            symbols.calendar = s;
+        }
+        if let Some(s) = config_symbols.clock {
+            symbols.clock = s;
+        }
+        if let Some(s) = config_symbols.help {
+            symbols.help = s;
+        }
+        if let Some(s) = config_symbols.left_arrow {
+            symbols.left_arrow = s;
+        }
+        if let Some(s) = config_symbols.right_arrow {
+            symbols.right_arrow = s;
+        }
+        if let Some(s) = config_symbols.up_arrow {
+            symbols.up_arrow = s;
+        }
+        if let Some(s) = config_symbols.down_arrow {
+            symbols.down_arrow = s;
+        }
+    }
+
+    let mut app = app::App::new(client_id_for_app, access_token, db_pool, theme, symbols);
     let colors = vec![
         ratatui::style::Color::Rgb(203, 166, 247),
         ratatui::style::Color::Rgb(245, 194, 231),

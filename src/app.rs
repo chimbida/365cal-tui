@@ -62,7 +62,6 @@ pub struct App {
     pub detail_scroll_state: ScrollbarState,
     pub db_pool: SqlitePool,
     pub theme: Theme,
-    pub use_nerd_font: bool,
     pub symbols: Symbols,
 }
 
@@ -85,7 +84,6 @@ impl App {
         access_token: String,
         db_pool: SqlitePool,
         theme: Theme,
-        use_nerd_font: bool,
         symbols: Symbols,
     ) -> Self {
         let mut calendar_list_state = ListState::default();
@@ -117,7 +115,6 @@ impl App {
             detail_scroll_state: ScrollbarState::default(),
             db_pool,
             theme,
-            use_nerd_font,
             symbols,
         }
     }

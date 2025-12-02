@@ -17,7 +17,7 @@ use calendar::{
 };
 use event::{draw_event_detail_view, draw_event_list};
 
-use crate::config::ConfigTheme;
+use crate::config::{ConfigSymbols, ConfigTheme};
 use std::collections::HashMap;
 
 #[derive(Clone)]
@@ -33,6 +33,53 @@ pub struct Symbols {
 
 impl Default for Symbols {
     fn default() -> Self {
+        Self::nerd_font()
+    }
+}
+
+impl Symbols {
+    pub fn from_string(name: &str, custom_fonts: &Option<HashMap<String, ConfigSymbols>>) -> Self {
+        let name_lower = name.to_lowercase();
+
+        if let Some(fonts) = custom_fonts {
+            if let Some(custom) = fonts.get(&name_lower) {
+                return Self::from_config(custom);
+            }
+        }
+
+        match name_lower.as_str() {
+            "unicode" => Self::unicode(),
+            "ascii" => Self::ascii(),
+            _ => Self::nerd_font(),
+        }
+    }
+
+    pub fn from_config(config: &ConfigSymbols) -> Self {
+        let default = Self::default();
+        Self {
+            calendar: config.calendar.clone().unwrap_or(default.calendar),
+            clock: config.clock.clone().unwrap_or(default.clock),
+            help: config.help.clone().unwrap_or(default.help),
+            left_arrow: config.left_arrow.clone().unwrap_or(default.left_arrow),
+            right_arrow: config.right_arrow.clone().unwrap_or(default.right_arrow),
+            up_arrow: config.up_arrow.clone().unwrap_or(default.up_arrow),
+            down_arrow: config.down_arrow.clone().unwrap_or(default.down_arrow),
+        }
+    }
+
+    pub fn nerd_font() -> Self {
+        Self {
+            calendar: " ".to_string(),
+            clock: " ".to_string(),
+            help: "".to_string(),
+            left_arrow: "".to_string(),
+            right_arrow: "".to_string(),
+            up_arrow: "".to_string(),
+            down_arrow: "".to_string(),
+        }
+    }
+
+    pub fn unicode() -> Self {
         Self {
             calendar: "📅".to_string(),
             clock: "🕒".to_string(),
@@ -43,18 +90,16 @@ impl Default for Symbols {
             down_arrow: "▼".to_string(),
         }
     }
-}
 
-impl Symbols {
-    pub fn nerd_font() -> Self {
+    pub fn ascii() -> Self {
         Self {
-            calendar: " ".to_string(),
-            clock: " ".to_string(),
-            help: "".to_string(),
-            left_arrow: "".to_string(),
-            right_arrow: "".to_string(),
-            up_arrow: "".to_string(),
-            down_arrow: "".to_string(),
+            calendar: "[C]".to_string(),
+            clock: "[T]".to_string(),
+            help: "[?]".to_string(),
+            left_arrow: "<".to_string(),
+            right_arrow: ">".to_string(),
+            up_arrow: "^".to_string(),
+            down_arrow: "v".to_string(),
         }
     }
 }
