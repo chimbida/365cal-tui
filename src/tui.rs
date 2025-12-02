@@ -122,7 +122,7 @@ pub async fn run_app(
     mut rx: mpsc::Receiver<AppEvent>,
     tx: mpsc::Sender<AppEvent>,
 ) -> io::Result<()> {
-    let theme = Theme::catppuccin_mocha();
+    let theme = app.theme.clone();
 
     if !app.calendars.is_empty() {
         refresh_events(app, tx.clone()).await;
@@ -825,7 +825,7 @@ pub async fn run_app(
                     events.sort_by(|a, b| a.event.start.date_time.cmp(&b.event.start.date_time));
                     app.events = events;
                     if !app.events.is_empty() {
-                        app.event_list_state.select(Some(0));
+                        app.select_nearest_event();
                     } else {
                         app.event_list_state.select(None);
                     }

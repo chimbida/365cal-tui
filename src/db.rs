@@ -133,6 +133,8 @@ pub async fn get_events(
             },
             body: body_preview.map(|c| ItemBody { content: c }),
             attendees: serde_json::from_str(&attendees_json).unwrap_or_default(),
+            location: None,
+            organizer: None,
         });
     }
     Ok(events)

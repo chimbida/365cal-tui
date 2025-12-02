@@ -36,6 +36,8 @@ pub enum CurrentView {
     EventDetail,
 }
 
+use crate::ui::{Symbols, Theme};
+
 /// Holds the entire state of the application.
 pub struct App {
     pub client_id: String,
@@ -59,6 +61,9 @@ pub struct App {
     pub event_list_scroll_state: ScrollbarState,
     pub detail_scroll_state: ScrollbarState,
     pub db_pool: SqlitePool,
+    pub theme: Theme,
+    pub use_nerd_font: bool,
+    pub symbols: Symbols,
 }
 
 // CORRECTION: These structs are now public so other modules can use them.
@@ -78,43 +83,24 @@ impl App {
     pub fn new(
         client_id: String,
         access_token: String,
-        calendars: Vec<GraphCalendar>,
         db_pool: SqlitePool,
+        theme: Theme,
+        use_nerd_font: bool,
+        symbols: Symbols,
     ) -> Self {
         let mut calendar_list_state = ListState::default();
-        calendar_list_state.select(Some(0));
+        calendar_list_state.select(Some(0)); // Default select first item
 
-        let colors = vec![
-            Color::Rgb(203, 166, 247),
-            Color::Rgb(245, 194, 231),
-            Color::Rgb(235, 160, 172),
-            Color::Rgb(243, 139, 168),
-            Color::Rgb(250, 179, 135),
-            Color::Rgb(249, 226, 175),
-            Color::Rgb(166, 227, 161),
-            Color::Rgb(148, 226, 213),
-            Color::Rgb(137, 220, 235),
-            Color::Rgb(116, 199, 236),
-            Color::Rgb(137, 180, 250),
-            Color::Rgb(180, 190, 254),
-        ];
+        let mut event_list_state = ListState::default();
+        event_list_state.select(None);
 
-        let color_calendars = calendars
-            .into_iter()
-            .enumerate()
-            .map(|(i, calendar)| ColorCalendar {
-                calendar,
-                color: colors[i % colors.len()],
-            })
-            .collect();
-
-        Self {
+        App {
             client_id,
             access_token,
-            calendars: color_calendars,
-            events: vec![],
+            calendars: Vec::new(),
+            events: Vec::new(),
             calendar_list_state,
-            event_list_state: ListState::default(),
+            event_list_state,
             current_view: CurrentView::Calendars,
             event_view_mode: EventViewMode::List,
             current_calendar_id: None,
@@ -130,6 +116,9 @@ impl App {
             event_list_scroll_state: ScrollbarState::default(),
             detail_scroll_state: ScrollbarState::default(),
             db_pool,
+            theme,
+            use_nerd_font,
+            symbols,
         }
     }
 
@@ -324,5 +313,40 @@ impl App {
 
     pub fn scroll_up(&mut self) {
         self.detail_view_scroll = self.detail_view_scroll.saturating_sub(1);
+    }
+
+    pub fn select_nearest_event(&mut self) {
+        if self.events.is_empty() {
+            self.event_list_state.select(None);
+            return;
+        }
+
+        let now = Local::now().naive_local();
+        let mut nearest_index = 0;
+        let mut min_diff = i64::MAX;
+
+        for (i, color_event) in self.events.iter().enumerate() {
+            if let Ok(start) = NaiveDateTime::parse_from_str(
+                &color_event.event.start.date_time,
+                "%Y-%m-%dT%H:%M:%S%.f",
+            ) {
+                let diff = start.signed_duration_since(now).num_seconds().abs();
+                if diff < min_diff {
+                    min_diff = diff;
+                    nearest_index = i;
+                }
+            }
+        }
+
+        self.event_list_state.select(Some(nearest_index));
+
+        // Also update displayed_date to match the event
+        if let Some(event) = self.events.get(nearest_index) {
+            if let Ok(start) =
+                NaiveDateTime::parse_from_str(&event.event.start.date_time, "%Y-%m-%dT%H:%M:%S%.f")
+            {
+                self.displayed_date = start.date();
+            }
+        }
     }
 }

@@ -17,6 +17,49 @@ use calendar::{
 };
 use event::{draw_event_detail_view, draw_event_list};
 
+use crate::config::ConfigTheme;
+use std::collections::HashMap;
+
+#[derive(Clone)]
+pub struct Symbols {
+    pub calendar: String,
+    pub clock: String,
+    pub help: String,
+    pub left_arrow: String,
+    pub right_arrow: String,
+    pub up_arrow: String,
+    pub down_arrow: String,
+}
+
+impl Default for Symbols {
+    fn default() -> Self {
+        Self {
+            calendar: "📅".to_string(),
+            clock: "🕒".to_string(),
+            help: "?".to_string(),
+            left_arrow: "◄".to_string(),
+            right_arrow: "►".to_string(),
+            up_arrow: "▲".to_string(),
+            down_arrow: "▼".to_string(),
+        }
+    }
+}
+
+impl Symbols {
+    pub fn nerd_font() -> Self {
+        Self {
+            calendar: " ".to_string(),
+            clock: " ".to_string(),
+            help: "".to_string(),
+            left_arrow: "".to_string(),
+            right_arrow: "".to_string(),
+            up_arrow: "".to_string(),
+            down_arrow: "".to_string(),
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct Theme {
     pub background: Color,
     pub foreground: Color,
@@ -30,7 +73,47 @@ pub struct Theme {
 }
 
 impl Theme {
-    pub fn catppuccin_mocha() -> Self {
+    pub fn from_string(name: &str, custom_themes: &Option<HashMap<String, ConfigTheme>>) -> Self {
+        let name_lower = name.to_lowercase();
+
+        if let Some(themes) = custom_themes {
+            if let Some(custom) = themes.get(&name_lower) {
+                return Self::from_config(custom);
+            }
+        }
+
+        // Fallback to default if not found in config
+        Self::default()
+    }
+
+    pub fn from_config(config: &ConfigTheme) -> Self {
+        fn parse_color(s: &str) -> Color {
+            if s.starts_with('#') && s.len() == 7 {
+                let r = u8::from_str_radix(&s[1..3], 16).unwrap_or(255);
+                let g = u8::from_str_radix(&s[3..5], 16).unwrap_or(255);
+                let b = u8::from_str_radix(&s[5..7], 16).unwrap_or(255);
+                Color::Rgb(r, g, b)
+            } else {
+                Color::White // Fallback
+            }
+        }
+
+        Self {
+            background: parse_color(&config.background),
+            foreground: parse_color(&config.foreground),
+            yellow: parse_color(&config.yellow),
+            blue: parse_color(&config.blue),
+            mauve: parse_color(&config.mauve),
+            green: parse_color(&config.green),
+            red: parse_color(&config.red),
+            peach: parse_color(&config.peach),
+            teal: parse_color(&config.teal),
+        }
+    }
+}
+
+impl Default for Theme {
+    fn default() -> Self {
         Self {
             background: Color::Rgb(30, 30, 46),
             foreground: Color::Rgb(205, 214, 244),
@@ -87,12 +170,11 @@ pub fn ui(f: &mut Frame, app: &mut App, theme: &Theme) {
     let header_chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
-            Constraint::Length(66), // Tabs (tuned to 66 to remove extra space)
+            Constraint::Length(68), // Tabs (tuned to 68 to remove extra space)
             Constraint::Min(0),     // Title (takes remaining space)
         ])
         .split(main_chunks[0]);
 
-    // Tabs (Left)
     // Tabs (Left)
     let selected_index = match app.current_view {
         CurrentView::Calendars => 0,
@@ -105,13 +187,20 @@ pub fn ui(f: &mut Frame, app: &mut App, theme: &Theme) {
         },
     };
 
+    let calendar_icon = format!(" {} Cals ", app.symbols.calendar);
+    let list_icon = "  List "; // Not configurable yet
+    let week_icon = format!(" {} Week ", app.symbols.clock);
+    let work_icon = "  Work "; // Not configurable yet
+    let day_icon = "  Day "; // Not configurable yet
+    let month_icon = "  Month "; // Not configurable yet
+
     let tab_data = vec![
-        ("  Cals ", theme.blue),
-        ("  List ", theme.green),
-        ("  Week ", theme.yellow),
-        ("  Work ", theme.peach),
-        ("  Day ", theme.teal),
-        ("  Month ", theme.red),
+        (calendar_icon.as_str(), theme.blue),
+        (list_icon, theme.green),
+        (week_icon.as_str(), theme.yellow),
+        (work_icon, theme.peach),
+        (day_icon, theme.teal),
+        (month_icon, theme.red),
     ];
 
     let active_color = tab_data[selected_index].1;
@@ -167,7 +256,7 @@ pub fn ui(f: &mut Frame, app: &mut App, theme: &Theme) {
         .split(main_chunks[2]);
 
     // Help Text (Footer Left)
-    let help_text = " ? Help ";
+    let help_text = format!(" {} Help ", app.symbols.help);
     let help_paragraph = Paragraph::new(help_text)
         .style(Style::default().fg(theme.blue))
         .alignment(Alignment::Left);
@@ -346,15 +435,16 @@ fn draw_help_popup(f: &mut Frame, app: &App, area: Rect, theme: &Theme) {
         ])
         .split(area);
 
+    let up_down_arrow = format!("{}/{}", app.symbols.up_arrow, app.symbols.down_arrow);
     let rows = vec![
         Row::new(vec!["Key", "Action"]),
-        Row::new(vec!["?", "Toggle Help"]),
+        Row::new(vec![app.symbols.help.as_str(), "Toggle Help"]),
         Row::new(vec!["q", "Quit"]),
         Row::new(vec!["r", "Refresh Events"]),
         Row::new(vec!["b", "Back"]),
         Row::new(vec!["Enter", "Select / Details"]),
         Row::new(vec!["Tab", "Cycle Views"]),
-        Row::new(vec!["↑/↓", "Navigate List / Scroll"]),
+        Row::new(vec![up_down_arrow.as_str(), "Navigate List / Scroll"]),
         Row::new(vec!["a/d", "Navigate Month/Week"]),
     ];
 

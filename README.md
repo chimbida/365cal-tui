@@ -106,7 +106,52 @@ This is the most important part! To allow the app to access your calendar, you m
 
     # Optional: enable logging to a file for debugging (defaults to false)
     enable_debug_log = false
+
+    # Theme selection: "catppuccin", "dracula", "gruvbox" or a custom theme name (default: "catppuccin")
+    theme = "catppuccin"
+
+    # Use Nerd Font icons (default: true)
+    use_nerd_font = true
+
+    # --- Customization Examples ---
+
+    # Define your own theme!
+    # [custom_themes.my_theme]
+    # background = "#000000"
+    # foreground = "#FFFFFF"
+    # yellow = "#FFFF00"
+    # blue = "#0000FF"
+    # mauve = "#FF00FF"
+    # green = "#00FF00"
+    # red = "#FF0000"
+    # peach = "#FFCC00"
+    # teal = "#00FFFF"
+
+    # Customize specific symbols/icons
+    # [symbols]
+    # calendar = "📅"
+    # clock = "🕒"
+    # help = "?"
+    # left_arrow = "◄"
+    # right_arrow = "►"
+    # up_arrow = "▲"
+    # down_arrow = "▼"
     ```
+
+### 🎨 Themes & Customization
+
+The application supports built-in themes and full customization via `Settings.toml`.
+
+**Built-in Themes:**
+- `catppuccin` (default)
+- `dracula`
+- `gruvbox`
+
+**Custom Themes:**
+You can define your own color palette by adding a `[custom_themes.your_theme_name]` section to the config file. Colors must be specified as hex strings (e.g., `"#RRGGBB"`).
+
+**Symbols/Icons:**
+If you don't use a Nerd Font or want to change specific icons, you can override them in the `[symbols]` section.
 
 ### 🛠️ Building and Running
 

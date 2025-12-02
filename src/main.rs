@@ -90,13 +90,110 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     }
 
     // CORREÇÃO: Passando o client_id e db_pool para o construtor do App
-    let mut app = app::App::new(client_id_for_app, access_token, calendars, db_pool);
-
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
+    let theme_name = settings.theme.unwrap_or_else(|| "catppuccin".to_string());
+    let theme = ui::Theme::from_string(&theme_name, &settings.custom_themes);
+    let use_nerd_font = settings.use_nerd_font.unwrap_or(true);
+
+    // Load symbols from config or use defaults based on nerd font setting
+    let symbols = if let Some(config_symbols) = settings.symbols {
+        ui::Symbols {
+            calendar: config_symbols.calendar.unwrap_or_else(|| {
+                if use_nerd_font {
+                    ui::Symbols::nerd_font().calendar
+                } else {
+                    ui::Symbols::default().calendar
+                }
+            }),
+            clock: config_symbols.clock.unwrap_or_else(|| {
+                if use_nerd_font {
+                    ui::Symbols::nerd_font().clock
+                } else {
+                    ui::Symbols::default().clock
+                }
+            }),
+            help: config_symbols.help.unwrap_or_else(|| {
+                if use_nerd_font {
+                    ui::Symbols::nerd_font().help
+                } else {
+                    ui::Symbols::default().help
+                }
+            }),
+            left_arrow: config_symbols.left_arrow.unwrap_or_else(|| {
+                if use_nerd_font {
+                    ui::Symbols::nerd_font().left_arrow
+                } else {
+                    ui::Symbols::default().left_arrow
+                }
+            }),
+            right_arrow: config_symbols.right_arrow.unwrap_or_else(|| {
+                if use_nerd_font {
+                    ui::Symbols::nerd_font().right_arrow
+                } else {
+                    ui::Symbols::default().right_arrow
+                }
+            }),
+            up_arrow: config_symbols.up_arrow.unwrap_or_else(|| {
+                if use_nerd_font {
+                    ui::Symbols::nerd_font().up_arrow
+                } else {
+                    ui::Symbols::default().up_arrow
+                }
+            }),
+            down_arrow: config_symbols.down_arrow.unwrap_or_else(|| {
+                if use_nerd_font {
+                    ui::Symbols::nerd_font().down_arrow
+                } else {
+                    ui::Symbols::default().down_arrow
+                }
+            }),
+        }
+    } else if use_nerd_font {
+        ui::Symbols::nerd_font()
+    } else {
+        ui::Symbols::default()
+    };
+
+    let mut app = app::App::new(
+        client_id_for_app,
+        access_token,
+        db_pool,
+        theme,
+        use_nerd_font,
+        symbols,
+    );
+    let colors = vec![
+        ratatui::style::Color::Rgb(203, 166, 247),
+        ratatui::style::Color::Rgb(245, 194, 231),
+        ratatui::style::Color::Rgb(235, 160, 172),
+        ratatui::style::Color::Rgb(243, 139, 168),
+        ratatui::style::Color::Rgb(250, 179, 135),
+        ratatui::style::Color::Rgb(249, 226, 175),
+        ratatui::style::Color::Rgb(166, 227, 161),
+        ratatui::style::Color::Rgb(148, 226, 213),
+        ratatui::style::Color::Rgb(137, 220, 235),
+        ratatui::style::Color::Rgb(116, 199, 236),
+        ratatui::style::Color::Rgb(137, 180, 250),
+        ratatui::style::Color::Rgb(180, 190, 254),
+    ];
+
+    app.calendars = calendars
+        .into_iter()
+        .enumerate()
+        .map(|(i, calendar)| app::ColorCalendar {
+            calendar,
+            color: colors[i % colors.len()],
+        })
+        .collect();
+
+    // Initial load from DB might have events, so select nearest
+    if !app.events.is_empty() {
+        app.select_nearest_event();
+    }
 
     let res = tui::run_app(&mut terminal, &mut app, rx, tx).await;
 

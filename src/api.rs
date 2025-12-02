@@ -24,6 +24,18 @@ pub struct DateTimeTimeZone {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Location {
+    #[serde(rename = "displayName")]
+    pub display_name: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Organizer {
+    pub email_address: EmailAddress,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GraphEvent {
     pub id: String,
     pub subject: String,
@@ -33,6 +45,8 @@ pub struct GraphEvent {
     pub body: Option<ItemBody>,
     #[serde(default)]
     pub attendees: Vec<Attendee>,
+    pub location: Option<Location>,
+    pub organizer: Option<Organizer>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -93,7 +107,7 @@ pub async fn list_events(
     // Parameters for the initial request
     let start_str = start_date.to_rfc3339();
     let end_str = end_date.to_rfc3339();
-    let select_fields = "subject,start,end,body,attendees".to_string();
+    let select_fields = "subject,start,end,body,attendees,location,organizer".to_string();
     let orderby_field = "start/dateTime".to_string();
 
     // Build the first request using .query() for proper URL encoding
