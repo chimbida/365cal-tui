@@ -24,35 +24,18 @@ impl NotificationManager {
             return;
         }
 
-        let now = Local::now();
-        let threshold_time = now + chrono::Duration::minutes(self.minutes_before as i64);
+        let now_utc = chrono::Utc::now();
+        let threshold_time_utc = now_utc + chrono::Duration::minutes(self.minutes_before as i64);
 
         for event in events {
-            // Parse event start time
-            // Assuming event.start.date_time is in ISO 8601 format or similar that chrono parses
-            // The Graph API returns UTC usually, but we need to handle it correctly.
-            // Our GraphEvent struct has DateTimeTimeZone.
-
-            // We need to parse the date string.
-            // Since we don't have easy access to the exact timezone offset from the string sometimes,
-            // we'll try to parse it as NaiveDateTime and assume it's in the user's local time
-            // if the API returns it that way, or UTC.
-            //
-            // However, looking at api.rs, start is DateTimeTimeZone which has date_time: String.
-            // Let's try to parse it.
-
             let start_time_str = &event.start.date_time;
 
-            // Microsoft Graph often returns 7 digits of precision for seconds, which chrono might struggle with
-            // if not handled, or standard ISO.
-            // Let's try standard parsing.
-
-            let start_time =
+            // Parse as NaiveDateTime first
+            let start_naive =
                 match chrono::NaiveDateTime::parse_from_str(start_time_str, "%Y-%m-%dT%H:%M:%S%.f")
                 {
                     Ok(t) => t,
                     Err(_) => {
-                        // Try without fractional seconds
                         match chrono::NaiveDateTime::parse_from_str(
                             start_time_str,
                             "%Y-%m-%dT%H:%M:%S",
@@ -69,42 +52,27 @@ impl NotificationManager {
                     }
                 };
 
-            // Convert NaiveDateTime to Local DateTime for comparison
-            // Ideally we should respect the time zone in event.start.time_zone
-            // But for simplicity and since we often get times in UTC or Local,
-            // let's assume the comparison logic:
+            // Assume the API returns UTC times (which is standard for Graph API)
+            let start_time_utc = chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
+                start_naive,
+                chrono::Utc,
+            );
 
-            // If the event is within the window:
-            // now < event_start <= threshold_time
-
-            // We need to convert start_time to the same timezone as 'now' (Local) or 'now' to UTC.
-            // Let's assume the event time is roughly comparable.
-            // A better approach is to rely on the fact that we display these times in the UI.
-
-            // Let's try to be safe: treat start_time as Local for now if it lacks offset,
-            // or better, just compare NaiveDateTimes if we assume everything is consistent.
-
-            let now_naive = now.naive_local();
-            let threshold_naive = threshold_time.naive_local();
-
-            if start_time > now_naive && start_time <= threshold_naive {
+            if start_time_utc > now_utc && start_time_utc <= threshold_time_utc {
                 if !self.notified_events.contains(&event.id) {
-                    self.send_notification(&event.subject, start_time_str);
+                    self.send_notification(&event.subject, start_time_utc);
                     self.notified_events.insert(event.id.clone());
                 }
             }
         }
     }
 
-    fn send_notification(&self, subject: &str, time_str: &str) {
+    fn send_notification(&self, subject: &str, start_time_utc: chrono::DateTime<chrono::Utc>) {
         info!("Sending notification for event: {}", subject);
 
-        // Format time for display (simple)
-        let time_display =
-            match chrono::NaiveDateTime::parse_from_str(time_str, "%Y-%m-%dT%H:%M:%S%.f") {
-                Ok(t) => t.format("%H:%M").to_string(),
-                Err(_) => time_str.to_string(), // Fallback
-            };
+        // Convert to Local time for display
+        let local_time = start_time_utc.with_timezone(&Local);
+        let time_display = local_time.format("%H:%M").to_string();
 
         let body = format!("Starting at {}", time_display);
 

@@ -1,4 +1,6 @@
+use crate::api::GraphEvent;
 use crate::app::App;
+use crate::ui::centered_rect;
 use crate::ui::Theme;
 use chrono::{DateTime, Datelike, Duration as ChronoDuration, Local, NaiveDateTime, Utc, Weekday};
 use ratatui::{
@@ -464,8 +466,31 @@ pub fn draw_day_view(
         }
     }
 
-    let paragraph = Paragraph::new(day_events_text)
-        .block(Block::default()) // No extra border inside
-        .wrap(Wrap { trim: true });
-    f.render_widget(paragraph, inner_area);
+    if day_events_text.is_empty() {
+        let empty_message = vec![
+            Line::from(Span::styled(
+                "We don't have anything scheduled for today!",
+                Style::default()
+                    .fg(theme.green)
+                    .add_modifier(Modifier::BOLD),
+            )),
+            Line::from(""),
+            Line::from(Span::styled(
+                "🌟  ☕  🎉",
+                Style::default().fg(theme.yellow),
+            )),
+        ];
+
+        let paragraph = Paragraph::new(empty_message)
+            .alignment(Alignment::Center)
+            .block(Block::default().borders(Borders::NONE));
+
+        let area = centered_rect(60, 20, inner_area);
+        f.render_widget(paragraph, area);
+    } else {
+        let events_list = Paragraph::new(day_events_text)
+            .block(Block::default().borders(Borders::NONE))
+            .wrap(Wrap { trim: true });
+        f.render_widget(events_list, inner_area);
+    }
 }
