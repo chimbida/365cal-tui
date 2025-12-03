@@ -844,6 +844,7 @@ pub async fn run_app(
                                                     if local_y > 0 {
                                                         let content_y = (local_y - 1) as usize; // Adjust for top border
                                                         let mut accumulated_height = 0;
+                                                        let mut event_clicked = false;
 
                                                         for (index, text) in day_events {
                                                             // Calculate wrapped height using word wrapping approximation
@@ -868,17 +869,27 @@ pub async fn run_app(
                                                                 app.event_list_state.select(Some(index));
                                                                 app.detail_view_scroll = 0;
                                                                 app.current_view = CurrentView::EventDetail;
-                                                                continue; 
+                                                                event_clicked = true;
+                                                                break; 
                                                             }
                                                             accumulated_height += height;
                                                         }
-                                                    }
 
-                                                    // Switch to List View
-                                                    app.displayed_date = clicked_date;
-                                                    app.event_view_mode = EventViewMode::List;
-                                                    app.start_transition(300);
-                                                    needs_refresh = true;
+                                                        if !event_clicked {
+                                                            // Switch to List View
+                                                            app.displayed_date = clicked_date;
+                                                            app.event_view_mode = EventViewMode::List;
+                                                            app.start_transition(300);
+                                                            needs_refresh = true;
+                                                        }
+                                                    } else {
+                                                        // Clicked on header (local_y == 0)
+                                                        // Switch to List View
+                                                        app.displayed_date = clicked_date;
+                                                        app.event_view_mode = EventViewMode::List;
+                                                        app.start_transition(300);
+                                                        needs_refresh = true;
+                                                    }
                                                 }
                                             }
                                         } else if let EventViewMode::Day = app.event_view_mode {
