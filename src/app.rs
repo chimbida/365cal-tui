@@ -36,6 +36,7 @@ pub enum CurrentView {
     EventDetail,
 }
 
+use crate::notifications::NotificationManager;
 use crate::ui::{Symbols, Theme};
 
 /// Holds the entire state of the application.
@@ -63,6 +64,7 @@ pub struct App {
     pub db_pool: SqlitePool,
     pub theme: Theme,
     pub symbols: Symbols,
+    pub notification_manager: NotificationManager,
 }
 
 // CORRECTION: These structs are now public so other modules can use them.
@@ -85,6 +87,7 @@ impl App {
         db_pool: SqlitePool,
         theme: Theme,
         symbols: Symbols,
+        notification_manager: NotificationManager,
     ) -> Self {
         let mut calendar_list_state = ListState::default();
         calendar_list_state.select(Some(0)); // Default select first item
@@ -116,6 +119,7 @@ impl App {
             db_pool,
             theme,
             symbols,
+            notification_manager,
         }
     }
 

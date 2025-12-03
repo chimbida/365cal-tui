@@ -15,6 +15,7 @@ mod app;
 mod auth;
 mod config;
 mod db;
+mod notifications;
 mod tui;
 mod ui;
 
@@ -134,7 +135,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
     }
 
-    let mut app = app::App::new(client_id_for_app, access_token, db_pool, theme, symbols);
+    let notification_manager = notifications::NotificationManager::new(
+        settings.enable_notifications.unwrap_or(true),
+        settings.notification_minutes_before.unwrap_or(15),
+    );
+
+    let mut app = app::App::new(
+        client_id_for_app,
+        access_token,
+        db_pool,
+        theme,
+        symbols,
+        notification_manager,
+    );
     let colors = vec![
         ratatui::style::Color::Rgb(203, 166, 247),
         ratatui::style::Color::Rgb(245, 194, 231),

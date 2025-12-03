@@ -39,6 +39,8 @@ pub struct Settings {
     pub custom_themes: Option<HashMap<String, ConfigTheme>>,
     pub symbols: Option<ConfigSymbols>,
     pub custom_fonts: Option<HashMap<String, ConfigSymbols>>,
+    pub enable_notifications: Option<bool>,
+    pub notification_minutes_before: Option<u64>,
 }
 
 pub fn get_config_dir() -> PathBuf {
@@ -65,6 +67,12 @@ refresh_interval_minutes = 15
 
 # Enable debug logging to 365cal-tui.log (default: false)
 enable_debug_log = false
+
+# Enable system notifications (default: true)
+enable_notifications = true
+
+# Time in minutes before event to notify (default: 15)
+notification_minutes_before = 15
 
 # Theme selection: "catppuccin", "dracula", "gruvbox" (default: "catppuccin")
 theme = "catppuccin"

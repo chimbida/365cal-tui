@@ -101,7 +101,7 @@ async fn refresh_events(app: &mut App, tx: mpsc::Sender<AppEvent>) {
         for (i, result) in results.into_iter().enumerate() {
             match result {
                 Ok(events) => {
-                    if let Err(e) = crate::db::save_events(&db_pool, &events, &calendars[i].calendar.id).await {
+                    if let Err(e) = crate::db::save_events_with_range(&db_pool, &events, &calendars[i].calendar.id, &start_date, &end_date).await {
                         error!("Failed to save events to DB: {}", e);
                     }
                     let color = calendars[i].color;
@@ -130,8 +130,17 @@ pub async fn run_app(
 
     app.start_transition(500);
 
+    let mut last_notification_check = std::time::Instant::now();
+
     loop {
         terminal.draw(|f| ui(f, app, &theme))?;
+
+        // Check notifications every minute
+        if last_notification_check.elapsed() >= Duration::from_secs(60) {
+            let events: Vec<_> = app.events.iter().map(|e| e.event.clone()).collect();
+            app.notification_manager.check_and_notify(&events);
+            last_notification_check = std::time::Instant::now();
+        }
 
         let mut needs_refresh = false;
 
@@ -296,6 +305,47 @@ pub async fn run_app(
                         continue;
                     }
 
+                    // Handle Event Detail View specific mouse logic (Click outside to close)
+                    if let CurrentView::EventDetail = app.current_view {
+                        if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
+                            let x = mouse.column;
+                            let y = mouse.row;
+                            
+                            // Re-calculate the centered rect for the popup
+                            // This duplicates logic from ui.rs, which is not ideal but necessary for hit testing
+                            // unless we store the area in App state.
+                            // Let's assume the same 80% logic.
+                            let size = terminal.size()?;
+                            let percent_x = 80;
+                            let percent_y = 80;
+                            
+                            let popup_layout = Layout::default()
+                                .direction(Direction::Vertical)
+                                .constraints([
+                                    Constraint::Percentage((100 - percent_y) / 2),
+                                    Constraint::Percentage(percent_y),
+                                    Constraint::Percentage((100 - percent_y) / 2),
+                                ])
+                                .split(size);
+
+                            let popup_area = Layout::default()
+                                .direction(Direction::Horizontal)
+                                .constraints([
+                                    Constraint::Percentage((100 - percent_x) / 2),
+                                    Constraint::Percentage(percent_x),
+                                    Constraint::Percentage((100 - percent_x) / 2),
+                                ])
+                                .split(popup_layout[1])[1];
+
+                            if x < popup_area.left() || x >= popup_area.right() || y < popup_area.top() || y >= popup_area.bottom() {
+                                // Clicked outside
+                                app.current_view = CurrentView::Events;
+                                app.start_transition(300);
+                                continue;
+                            }
+                        }
+                    }
+
                     match mouse.kind {
                         MouseEventKind::Down(MouseButton::Left) => {
                             let x = mouse.column;
@@ -312,6 +362,140 @@ pub async fn run_app(
                                 continue;
                             }
 
+                            // Check for Footer Navigation Click
+                            // We need to know where the footer title is.
+                            // Since we don't store it in App, we approximate or need to store it.
+                            // Storing in App is better. But for now, let's recalculate.
+                            let size = terminal.size()?;
+                            let main_chunks = Layout::default()
+                                .direction(Direction::Vertical)
+                                .margin(1)
+                                .constraints([
+                                    Constraint::Length(3), // Header
+                                    Constraint::Min(0),    // Content
+                                    Constraint::Length(1), // Footer
+                                ].as_ref())
+                                .split(size);
+                            
+                            let footer_chunks = Layout::default()
+                                .direction(Direction::Horizontal)
+                                .constraints([
+                                    Constraint::Length(10), // Help
+                                    Constraint::Min(0),     // Title
+                                    Constraint::Length(20), // Date/Time
+                                ])
+                                .split(main_chunks[2]);
+                            
+                            let title_area = footer_chunks[1];
+                            if x >= title_area.left() && x < title_area.right() && y >= title_area.top() && y < title_area.bottom() {
+                                // Reconstruct the footer title to calculate its width
+                                let calendar_name = app.current_calendar_id.as_ref()
+                                    .and_then(|id| app.calendars.iter().find(|c| c.calendar.id == *id).map(|c| c.calendar.name.clone()))
+                                    .unwrap_or_else(|| "All Calendars".to_string());
+
+                                let footer_text = match app.event_view_mode {
+                                    EventViewMode::List => format!(
+                                        " {} {} {} ",
+                                        app.symbols.left_arrow, calendar_name, app.symbols.right_arrow
+                                    ),
+                                    EventViewMode::Month => {
+                                        let displayed_date = app.displayed_date;
+                                        let month_str = format!(
+                                            "{} {}",
+                                            [
+                                                "",
+                                                "January",
+                                                "February",
+                                                "March",
+                                                "April",
+                                                "May",
+                                                "June",
+                                                "July",
+                                                "August",
+                                                "September",
+                                                "October",
+                                                "November",
+                                                "December"
+                                            ][displayed_date.month() as usize],
+                                            displayed_date.year()
+                                        );
+                                        format!(
+                                            " {} {} - {} {} ",
+                                            app.symbols.left_arrow, calendar_name, month_str, app.symbols.right_arrow
+                                        )
+                                    }
+                                    EventViewMode::Week => {
+                                        let mut week_start = app.displayed_date;
+                                        while week_start.weekday() != Weekday::Sun {
+                                            week_start = week_start.pred_opt().unwrap();
+                                        }
+                                        let week_end = week_start + ChronoDuration::days(6);
+                                        format!(
+                                            " {} {} ({} to {}) {} ",
+                                            app.symbols.left_arrow,
+                                            calendar_name,
+                                            week_start.format("%d/%m"),
+                                            week_end.format("%d/%m"),
+                                            app.symbols.right_arrow
+                                        )
+                                    }
+                                    EventViewMode::WorkWeek => {
+                                        let mut week_start = app.displayed_date;
+                                        while week_start.weekday() != Weekday::Mon {
+                                            week_start = week_start.pred_opt().unwrap();
+                                        }
+                                        let week_end = week_start + ChronoDuration::days(4);
+                                        format!(
+                                            " {} {} ({} to {}) {} ",
+                                            app.symbols.left_arrow,
+                                            calendar_name,
+                                            week_start.format("%d/%m"),
+                                            week_end.format("%d/%m"),
+                                            app.symbols.right_arrow
+                                        )
+                                    }
+                                    EventViewMode::Day => {
+                                        let current_day = app.displayed_date;
+                                        format!(
+                                            " {} {} ({}) {} ",
+                                            app.symbols.left_arrow,
+                                            calendar_name,
+                                            current_day.format("%a, %d %b %Y"),
+                                            app.symbols.right_arrow
+                                        )
+                                    }
+                                };
+
+                                let text_width = UnicodeWidthStr::width(footer_text.as_str()) as u16;
+                                // Footer is Right Aligned
+                                let end_x = title_area.right();
+                                let start_x = end_x.saturating_sub(text_width);
+
+                                // Check if click is within the text bounds
+                                if x >= start_x && x < end_x {
+                                    // Clicked on the text. Now check if left or right arrow.
+                                    // Left arrow is at the beginning, Right arrow is at the end.
+                                    // Let's assume a generous hit area of 4 chars from edges.
+                                    if x < start_x + 4 {
+                                        // Previous
+                                        match app.event_view_mode {
+                                            EventViewMode::List | EventViewMode::Month => app.previous_month(),
+                                            EventViewMode::Week | EventViewMode::WorkWeek => app.previous_week(),
+                                            EventViewMode::Day => { app.displayed_date = app.displayed_date.pred_opt().unwrap(); }
+                                        }
+                                        needs_refresh = true;
+                                    } else if x >= end_x - 4 {
+                                        // Next
+                                        match app.event_view_mode {
+                                            EventViewMode::List | EventViewMode::Month => app.next_month(),
+                                            EventViewMode::Week | EventViewMode::WorkWeek => app.next_week(),
+                                            EventViewMode::Day => { app.displayed_date = app.displayed_date.succ_opt().unwrap(); }
+                                        }
+                                        needs_refresh = true;
+                                    }
+                                }
+                            }
+
 
                             // Check for Tabs Click
                             // Replicate layout logic to find tabs area
@@ -324,10 +508,8 @@ pub async fn run_app(
                             let header_chunks = Layout::default()
                                 .direction(Direction::Horizontal)
                                 .constraints([
-                                    Constraint::Min(0),
-                                    Constraint::Length(14),
-                                    Constraint::Length(16),
-                                    Constraint::Length(22),
+                                    Constraint::Length(68), // Tabs (tuned to 68 to remove extra space)
+                                    Constraint::Min(0),     // Title (takes remaining space)
                                 ])
                                 .split(main_chunks[0]);
                             
@@ -337,21 +519,34 @@ pub async fn run_app(
                                 // Revert to logic compatible with Tabs widget
                                 let relative_x = x.saturating_sub(tabs_area.left() + 1); // +1 for left border
                                 
+                                let calendar_icon = format!(" {} Cals ", app.symbols.calendar);
+                                let list_icon = "  List ".to_string();
+                                let week_icon = format!(" {} Week ", app.symbols.clock);
+                                let work_icon = "  Work ".to_string();
+                                let day_icon = "  Day ".to_string();
+                                let month_icon = "  Month ".to_string();
+
                                 let tab_data = [
-                                    ("  Cals", CurrentView::Calendars, None),
-                                    ("  List", CurrentView::Events, Some(EventViewMode::List)),
-                                    ("  Week", CurrentView::Events, Some(EventViewMode::Week)),
-                                    ("  Work", CurrentView::Events, Some(EventViewMode::WorkWeek)),
-                                    (" 🗓 Day", CurrentView::Events, Some(EventViewMode::Day)),
-                                    ("  Month", CurrentView::Events, Some(EventViewMode::Month)),
+                                    (calendar_icon, CurrentView::Calendars, None),
+                                    (list_icon, CurrentView::Events, Some(EventViewMode::List)),
+                                    (week_icon, CurrentView::Events, Some(EventViewMode::Week)),
+                                    (work_icon, CurrentView::Events, Some(EventViewMode::WorkWeek)),
+                                    (day_icon, CurrentView::Events, Some(EventViewMode::Day)),
+                                    (month_icon, CurrentView::Events, Some(EventViewMode::Month)),
                                 ];
 
                                 let mut current_width_sum = 0;
                                 for (text, view, mode) in tab_data.iter() {
-                                    // Width = text length + 3 (divider " | ")
-                                    // Note: This is an approximation. Tabs widget might render differently.
-                                    // But since we use tight constraints, it should be close.
-                                    let width = text.len() as u16 + 3; 
+                                    // Width = text length + 1 (divider "|")
+                                    // The Tabs widget renders: " item1 " | " item2 "
+                                    // Our strings already include padding spaces e.g. "  List "
+                                    // Ratatui Tabs widget joins them with the divider.
+                                    // So the width of an item is its content width + divider width (1), except the last one?
+                                    // Actually, let's look at how we calculate it.
+                                    // If we are at the first item, it occupies text.width.
+                                    // Then a divider.
+                                    // Let's approximate: text.width + 3 to be safe and cover spacing.
+                                    let width = text.width() as u16 + 3; 
                                     
                                     if relative_x < current_width_sum + width {
                                         // Clicked this tab
@@ -490,13 +685,24 @@ pub async fn run_app(
                                                     .iter()
                                                     .enumerate()
                                                     .filter_map(|(i, e)| {
-                                                        if let Ok(start) =
+                                                        if let (Ok(start), Ok(end)) = (
                                                             NaiveDateTime::parse_from_str(
                                                                 &e.event.start.date_time,
                                                                 "%Y-%m-%dT%H:%M:%S%.f",
-                                                            )
-                                                        {
-                                                            if start.date() == clicked_date {
+                                                            ),
+                                                            NaiveDateTime::parse_from_str(
+                                                                &e.event.end.date_time,
+                                                                "%Y-%m-%dT%H:%M:%S%.f",
+                                                            ),
+                                                        ) {
+                                                            let start_date = start.date();
+                                                            let effective_end_date = if end.time() == chrono::NaiveTime::MIN && end.date() > start_date {
+                                                                end.date().pred_opt().unwrap()
+                                                            } else {
+                                                                end.date()
+                                                            };
+
+                                                            if start_date <= clicked_date && effective_end_date >= clicked_date {
                                                                 return Some(i);
                                                             }
                                                         }
@@ -594,18 +800,28 @@ pub async fn run_app(
                                                         .iter()
                                                         .enumerate()
                                                         .filter_map(|(i, e)| {
-                                                            if let Ok(start) =
+                                                            if let (Ok(start), Ok(end)) = (
                                                                 NaiveDateTime::parse_from_str(
                                                                     &e.event.start.date_time,
                                                                     "%Y-%m-%dT%H:%M:%S%.f",
-                                                                )
-                                                            {
-                                                                if start.date() == clicked_date {
+                                                                ),
+                                                                NaiveDateTime::parse_from_str(
+                                                                    &e.event.end.date_time,
+                                                                    "%Y-%m-%dT%H:%M:%S%.f",
+                                                                ),
+                                                            ) {
+                                                                let start_date = start.date();
+                                                                let effective_end_date = if end.time() == chrono::NaiveTime::MIN && end.date() > start_date {
+                                                                    end.date().pred_opt().unwrap()
+                                                                } else {
+                                                                    end.date()
+                                                                };
+
+                                                                if start_date <= clicked_date && effective_end_date >= clicked_date {
                                                                     // Reconstruct the event string to calculate height
                                                                     let start_local = DateTime::<Utc>::from_naive_utc_and_offset(start, Utc)
                                                                         .with_timezone(&Local);
-                                                                    let end_naive = NaiveDateTime::parse_from_str(&e.event.end.date_time, "%Y-%m-%dT%H:%M:%S%.f").unwrap_or(start);
-                                                                    let end_local = DateTime::<Utc>::from_naive_utc_and_offset(end_naive, Utc)
+                                                                    let end_local = DateTime::<Utc>::from_naive_utc_and_offset(end, Utc)
                                                                         .with_timezone(&Local);
                                                                     
                                                                     let event_str = format!(
@@ -687,17 +903,27 @@ pub async fn run_app(
                                                     .iter()
                                                     .enumerate()
                                                     .filter_map(|(i, e)| {
-                                                        if let Ok(start) =
+                                                        if let (Ok(start), Ok(end)) = (
                                                             NaiveDateTime::parse_from_str(
                                                                 &e.event.start.date_time,
                                                                 "%Y-%m-%dT%H:%M:%S%.f",
-                                                            )
-                                                        {
-                                                            if start.date() == clicked_date {
+                                                            ),
+                                                            NaiveDateTime::parse_from_str(
+                                                                &e.event.end.date_time,
+                                                                "%Y-%m-%dT%H:%M:%S%.f",
+                                                            ),
+                                                        ) {
+                                                            let start_date = start.date();
+                                                            let effective_end_date = if end.time() == chrono::NaiveTime::MIN && end.date() > start_date {
+                                                                end.date().pred_opt().unwrap()
+                                                            } else {
+                                                                end.date()
+                                                            };
+
+                                                            if start_date <= clicked_date && effective_end_date >= clicked_date {
                                                                 let start_local = DateTime::<Utc>::from_naive_utc_and_offset(start, Utc)
                                                                     .with_timezone(&Local);
-                                                                let end_naive = NaiveDateTime::parse_from_str(&e.event.end.date_time, "%Y-%m-%dT%H:%M:%S%.f").unwrap_or(start);
-                                                                let end_local = DateTime::<Utc>::from_naive_utc_and_offset(end_naive, Utc)
+                                                                let end_local = DateTime::<Utc>::from_naive_utc_and_offset(end, Utc)
                                                                     .with_timezone(&Local);
                                                                 
                                                                 let event_str = format!(
@@ -823,6 +1049,9 @@ pub async fn run_app(
                 }
                 AppEvent::EventsLoaded(mut events) => {
                     events.sort_by(|a, b| a.event.start.date_time.cmp(&b.event.start.date_time));
+                    // Check notifications for new events
+                    app.notification_manager.check_and_notify(&events.iter().map(|e| e.event.clone()).collect::<Vec<_>>());
+                    
                     app.events = events;
                     if !app.events.is_empty() {
                         app.select_nearest_event();

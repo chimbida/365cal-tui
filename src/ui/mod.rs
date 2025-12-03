@@ -330,7 +330,10 @@ pub fn ui(f: &mut Frame, app: &mut App, theme: &Theme) {
                 .unwrap_or_else(|| "All Calendars".to_string());
 
             match app.event_view_mode {
-                EventViewMode::List => format!(" {} ", calendar_name),
+                EventViewMode::List => format!(
+                    " {} {} {} ",
+                    app.symbols.left_arrow, calendar_name, app.symbols.right_arrow
+                ),
                 EventViewMode::Month => {
                     let displayed_date = app.displayed_date;
                     let month_str = format!(
@@ -352,7 +355,10 @@ pub fn ui(f: &mut Frame, app: &mut App, theme: &Theme) {
                         ][displayed_date.month() as usize],
                         displayed_date.year()
                     );
-                    format!(" {} - {} ", calendar_name, month_str)
+                    format!(
+                        " {} {} - {} {} ",
+                        app.symbols.left_arrow, calendar_name, month_str, app.symbols.right_arrow
+                    )
                 }
                 EventViewMode::Week => {
                     let mut week_start = app.displayed_date;
@@ -361,10 +367,12 @@ pub fn ui(f: &mut Frame, app: &mut App, theme: &Theme) {
                     }
                     let week_end = week_start + Duration::days(6);
                     format!(
-                        " {} ({} to {}) ",
+                        " {} {} ({} to {}) {} ",
+                        app.symbols.left_arrow,
                         calendar_name,
                         week_start.format("%d/%m"),
-                        week_end.format("%d/%m")
+                        week_end.format("%d/%m"),
+                        app.symbols.right_arrow
                     )
                 }
                 EventViewMode::WorkWeek => {
@@ -374,18 +382,22 @@ pub fn ui(f: &mut Frame, app: &mut App, theme: &Theme) {
                     }
                     let week_end = week_start + Duration::days(4);
                     format!(
-                        " {} ({} to {}) ",
+                        " {} {} ({} to {}) {} ",
+                        app.symbols.left_arrow,
                         calendar_name,
                         week_start.format("%d/%m"),
-                        week_end.format("%d/%m")
+                        week_end.format("%d/%m"),
+                        app.symbols.right_arrow
                     )
                 }
                 EventViewMode::Day => {
                     let current_day = app.displayed_date;
                     format!(
-                        " {} ({}) ",
+                        " {} {} ({}) {} ",
+                        app.symbols.left_arrow,
                         calendar_name,
-                        current_day.format("%a, %d %b %Y")
+                        current_day.format("%a, %d %b %Y"),
+                        app.symbols.right_arrow
                     )
                 }
             }

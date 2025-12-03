@@ -1,4 +1,5 @@
 use crate::api::{DateTimeTimeZone, GraphCalendar, GraphEvent, ItemBody};
+use chrono::{DateTime, Utc};
 use sqlx::{sqlite::SqlitePool, Row};
 use std::error::Error;
 
@@ -68,12 +69,25 @@ pub async fn get_calendars(
     Ok(calendars)
 }
 
-pub async fn save_events(
+pub async fn save_events_with_range(
     pool: &SqlitePool,
     events: &[GraphEvent],
     calendar_id: &str,
+    start_range: &DateTime<Utc>,
+    end_range: &DateTime<Utc>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     let mut tx = pool.begin().await?;
+
+    // Delete existing events in the range for this calendar to ensure we don't keep stale data
+    // We use the start_time of the event for this check.
+    // Note: This is a simplification. Ideally we should check for overlaps, but for syncing purposes,
+    // clearing the fetched range is usually sufficient if the fetch logic is consistent.
+    sqlx::query("DELETE FROM events WHERE calendar_id = ? AND start_time >= ? AND start_time <= ?")
+        .bind(calendar_id)
+        .bind(start_range.to_rfc3339())
+        .bind(end_range.to_rfc3339())
+        .execute(&mut *tx)
+        .await?;
 
     for event in events {
         let attendees_json = serde_json::to_string(&event.attendees).unwrap_or_default();

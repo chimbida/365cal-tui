@@ -38,6 +38,13 @@ The goal was simple: create a fast, keyboard-driven, and visually pleasing way t
     - Click on days in Month/Week views to zoom in.
     - Click the help button `[ ? ]` to view shortcuts.
     - Scroll wheel to navigate lists and details.
+    - **Clickable Footer Navigation:** `<` and `>` arrows to navigate dates.
+    - **Close Details:** Click outside the event popup to close it.
+- **System Notifications:** 🔔
+  - Get desktop notifications for upcoming events.
+  - Configurable alert time (e.g., 10 minutes before).
+- **Multi-day Event Support:** 🗓️
+  - Events spanning multiple days are correctly displayed across all days in Month, Week, and Day views.
 - **Polished UI & UX:**
   - **Help Popup:** Press `?` or click the help button to view keyboard shortcuts and the calendar legend.
   - **Clean Layout:** Minimized header with only navigation tabs. Title, help, and clock are neatly organized in the footer.
@@ -103,6 +110,12 @@ This is the most important part! To allow the app to access your calendar, you m
 
     # Optional: time for automatic refresh in minutes (defaults to 5)
     refresh_interval_minutes = 15
+
+    # Optional: enable system notifications (defaults to false)
+    enable_notifications = true
+
+    # Optional: minutes before event to notify (defaults to 15)
+    notification_minutes_before = 10
 
     # Optional: enable logging to a file for debugging (defaults to false)
     enable_debug_log = false

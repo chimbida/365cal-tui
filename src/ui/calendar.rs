@@ -137,7 +137,16 @@ pub fn draw_month_view(
                         NaiveDateTime::parse_from_str(&e.start.date_time, "%Y-%m-%dT%H:%M:%S%.f"),
                         NaiveDateTime::parse_from_str(&e.end.date_time, "%Y-%m-%dT%H:%M:%S%.f"),
                     ) {
-                        if start_naive.date() == current_day {
+                        let start_date = start_naive.date();
+                        let effective_end_date = if end_naive.time() == chrono::NaiveTime::MIN
+                            && end_naive.date() > start_date
+                        {
+                            end_naive.date().pred_opt().unwrap()
+                        } else {
+                            end_naive.date()
+                        };
+
+                        if start_date <= current_day && effective_end_date >= current_day {
                             let start_local =
                                 DateTime::<Utc>::from_naive_utc_and_offset(start_naive, Utc)
                                     .with_timezone(&Local);
@@ -229,7 +238,16 @@ pub fn draw_week_view(
                 NaiveDateTime::parse_from_str(&e.start.date_time, "%Y-%m-%dT%H:%M:%S%.f"),
                 NaiveDateTime::parse_from_str(&e.end.date_time, "%Y-%m-%dT%H:%M:%S%.f"),
             ) {
-                if start_naive.date() == current_day {
+                let start_date = start_naive.date();
+                let effective_end_date = if end_naive.time() == chrono::NaiveTime::MIN
+                    && end_naive.date() > start_date
+                {
+                    end_naive.date().pred_opt().unwrap()
+                } else {
+                    end_naive.date()
+                };
+
+                if start_date <= current_day && effective_end_date >= current_day {
                     let start_local = DateTime::<Utc>::from_naive_utc_and_offset(start_naive, Utc)
                         .with_timezone(&Local);
                     let end_local = DateTime::<Utc>::from_naive_utc_and_offset(end_naive, Utc)
@@ -320,7 +338,16 @@ pub fn draw_work_week_view(
                 NaiveDateTime::parse_from_str(&e.start.date_time, "%Y-%m-%dT%H:%M:%S%.f"),
                 NaiveDateTime::parse_from_str(&e.end.date_time, "%Y-%m-%dT%H:%M:%S%.f"),
             ) {
-                if start_naive.date() == current_day {
+                let start_date = start_naive.date();
+                let effective_end_date = if end_naive.time() == chrono::NaiveTime::MIN
+                    && end_naive.date() > start_date
+                {
+                    end_naive.date().pred_opt().unwrap()
+                } else {
+                    end_naive.date()
+                };
+
+                if start_date <= current_day && effective_end_date >= current_day {
                     let start_local = DateTime::<Utc>::from_naive_utc_and_offset(start_naive, Utc)
                         .with_timezone(&Local);
                     let end_local = DateTime::<Utc>::from_naive_utc_and_offset(end_naive, Utc)
@@ -392,7 +419,15 @@ pub fn draw_day_view(
             NaiveDateTime::parse_from_str(&e.start.date_time, "%Y-%m-%dT%H:%M:%S%.f"),
             NaiveDateTime::parse_from_str(&e.end.date_time, "%Y-%m-%dT%H:%M:%S%.f"),
         ) {
-            if start_naive.date() == current_day {
+            let start_date = start_naive.date();
+            let effective_end_date =
+                if end_naive.time() == chrono::NaiveTime::MIN && end_naive.date() > start_date {
+                    end_naive.date().pred_opt().unwrap()
+                } else {
+                    end_naive.date()
+                };
+
+            if start_date <= current_day && effective_end_date >= current_day {
                 let start_local = DateTime::<Utc>::from_naive_utc_and_offset(start_naive, Utc)
                     .with_timezone(&Local);
                 let end_local = DateTime::<Utc>::from_naive_utc_and_offset(end_naive, Utc)
