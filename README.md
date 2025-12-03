@@ -111,7 +111,7 @@ This is the most important part! To allow the app to access your calendar, you m
     # Optional: time for automatic refresh in minutes (defaults to 5)
     refresh_interval_minutes = 15
 
-    # Optional: enable system notifications (defaults to false)
+    # Optional: enable system notifications (defaults to true)
     enable_notifications = true
 
     # Optional: minutes before event to notify (defaults to 15)
@@ -123,8 +123,9 @@ This is the most important part! To allow the app to access your calendar, you m
     # Theme selection: "catppuccin", "dracula", "gruvbox" or a custom theme name (default: "catppuccin")
     theme = "catppuccin"
 
-    # Use Nerd Font icons (default: true)
-    use_nerd_font = true
+    # Font/Symbol set selection: "nerd", "unicode", "ascii" (default: "nerd")
+    # "nerd" requires a Nerd Font installed.
+    font = "nerd"
 
     # --- Customization Examples ---
 
@@ -140,7 +141,7 @@ This is the most important part! To allow the app to access your calendar, you m
     # peach = "#FFCC00"
     # teal = "#00FFFF"
 
-    # Customize specific symbols/icons
+    # Customize specific symbols/icons globally
     # [symbols]
     # calendar = "📅"
     # clock = "🕒"
@@ -149,6 +150,12 @@ This is the most important part! To allow the app to access your calendar, you m
     # right_arrow = "►"
     # up_arrow = "▲"
     # down_arrow = "▼"
+
+    # Or define a custom font set
+    # [custom_fonts.my_font]
+    # calendar = "C"
+    # clock = "T"
+    # ...
     ```
 
 ### 🎨 Themes & Customization
