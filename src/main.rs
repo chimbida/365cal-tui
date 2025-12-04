@@ -42,6 +42,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         e
     })?;
 
+    let app_settings = settings.clone();
+
     let enable_logging = cli.debug || settings.enable_debug_log.unwrap_or(false);
     if enable_logging {
         simple_logging::log_to_file("365cal-tui.log", log::LevelFilter::Debug)?;
@@ -147,6 +149,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         theme,
         symbols,
         notification_manager,
+        app_settings,
     );
     let colors = vec![
         ratatui::style::Color::Rgb(203, 166, 247),
@@ -166,9 +169,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     app.calendars = calendars
         .into_iter()
         .enumerate()
-        .map(|(i, calendar)| app::ColorCalendar {
-            calendar,
-            color: colors[i % colors.len()],
+        .map(|(i, calendar)| {
+            let mut color = colors[i % colors.len()];
+            let mut icon = None;
+
+            if let Some(overrides) = &settings.calendar_overrides {
+                if let Some(cal_config) = overrides.get(&calendar.name.to_lowercase()) {
+                    if let Some(c) = &cal_config.color {
+                        if let Ok(parsed_color) = c.parse::<ratatui::style::Color>() {
+                            color = parsed_color;
+                        }
+                    }
+                    icon = cal_config.icon.clone();
+                }
+            }
+
+            app::ColorCalendar {
+                calendar,
+                color,
+                icon,
+            }
         })
         .collect();
 

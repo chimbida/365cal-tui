@@ -1,4 +1,3 @@
-use crate::api::GraphEvent;
 use crate::app::App;
 use crate::ui::centered_rect;
 use crate::ui::Theme;
@@ -22,12 +21,37 @@ pub fn draw_calendar_list(
     let all_calendars_style = Style::default()
         .fg(theme.foreground)
         .add_modifier(Modifier::BOLD);
-    items.push(ListItem::new("✨ All Calendars").style(all_calendars_style));
-    items.push(ListItem::new("👤 My Calendars").style(all_calendars_style));
+    let get_override = |name: &str, default_icon: &str| -> (String, Style) {
+        let mut icon = default_icon.to_string();
+        let mut style = all_calendars_style;
+
+        if let Some(overrides) = &app.settings.calendar_overrides {
+            if let Some(cal_config) = overrides.get(&name.to_lowercase()) {
+                if let Some(i) = &cal_config.icon {
+                    icon = i.clone();
+                }
+                if let Some(c) = &cal_config.color {
+                    if let Ok(parsed_color) = c.parse::<ratatui::style::Color>() {
+                        style = Style::default()
+                            .fg(parsed_color)
+                            .add_modifier(Modifier::BOLD);
+                    }
+                }
+            }
+        }
+        (icon, style)
+    };
+
+    let (all_icon, all_style) = get_override("All Calendars", "✨");
+    items.push(ListItem::new(format!("{} All Calendars", all_icon)).style(all_style));
+
+    let (my_icon, my_style) = get_override("My Calendars", "👤");
+    items.push(ListItem::new(format!("{} My Calendars", my_icon)).style(my_style));
     for c in &app.calendars {
+        let icon = c.icon.clone().unwrap_or_else(|| "■ ".to_string());
         let line = Line::from(vec![
-            Span::styled("■ ", Style::default().fg(c.color)),
-            Span::raw(c.calendar.name.clone()),
+            Span::styled(icon, Style::default().fg(c.color)),
+            Span::raw(format!(" {}", c.calendar.name)),
         ]);
         items.push(ListItem::new(line).style(Style::default().fg(theme.foreground)));
     }
@@ -265,8 +289,9 @@ pub fn draw_week_view(
                         Style::default().fg(color_event.color)
                     };
 
+                    let icon = color_event.icon.clone().unwrap_or_else(|| "■ ".to_string());
                     let event_line = Line::from(vec![
-                        Span::styled("■ ", style),
+                        Span::styled(icon, style),
                         Span::styled(
                             format!(
                                 "{}-{} {}",
@@ -365,8 +390,9 @@ pub fn draw_work_week_view(
                         Style::default().fg(color_event.color)
                     };
 
+                    let icon = color_event.icon.clone().unwrap_or_else(|| "■ ".to_string());
                     let event_line = Line::from(vec![
-                        Span::styled("■ ", style),
+                        Span::styled(icon, style),
                         Span::styled(
                             format!(
                                 "{}-{} {}",
@@ -445,8 +471,9 @@ pub fn draw_day_view(
                     Style::default().fg(color_event.color)
                 };
 
+                let icon = color_event.icon.clone().unwrap_or_else(|| "■ ".to_string());
                 let event_line = Line::from(vec![
-                    Span::styled("■ ", style),
+                    Span::styled(icon, style),
                     Span::styled(
                         format!(
                             "{}-{} {}",

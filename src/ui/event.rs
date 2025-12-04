@@ -43,8 +43,9 @@ pub fn draw_event_list(
                 }
                 _ => format!("[Invalid Date] | {}", e.subject),
             };
+            let icon = color_event.icon.clone().unwrap_or_else(|| "■ ".to_string());
             let line = Line::from(vec![
-                Span::styled("■ ", Style::default().fg(color_event.color)),
+                Span::styled(icon, Style::default().fg(color_event.color)),
                 Span::raw(line_content),
             ]);
             ListItem::new(line).style(Style::default().fg(theme.foreground))
@@ -136,8 +137,9 @@ pub fn draw_event_detail_view(f: &mut Frame, app: &mut App, area: Rect, theme: &
             .split(inner_area);
 
         // --- Subject ---
+        let icon = color_event.icon.clone().unwrap_or_else(|| "■ ".to_string());
         let subject_paragraph = Paragraph::new(Line::from(vec![
-            Span::styled("■ ", Style::default().fg(color_event.color)),
+            Span::styled(icon, Style::default().fg(color_event.color)),
             Span::styled(
                 event.subject.clone(),
                 Style::default()

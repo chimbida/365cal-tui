@@ -65,6 +65,8 @@ pub struct App {
     pub theme: Theme,
     pub symbols: Symbols,
     pub notification_manager: NotificationManager,
+    #[allow(dead_code)]
+    pub settings: crate::config::Settings,
 }
 
 // CORRECTION: These structs are now public so other modules can use them.
@@ -72,12 +74,14 @@ pub struct App {
 pub struct ColorCalendar {
     pub calendar: GraphCalendar,
     pub color: Color,
+    pub icon: Option<String>,
 }
 
 #[derive(Clone)]
 pub struct ColorEvent {
     pub event: GraphEvent,
     pub color: Color,
+    pub icon: Option<String>,
 }
 
 impl App {
@@ -88,6 +92,7 @@ impl App {
         theme: Theme,
         symbols: Symbols,
         notification_manager: NotificationManager,
+        settings: crate::config::Settings,
     ) -> Self {
         let mut calendar_list_state = ListState::default();
         calendar_list_state.select(Some(0)); // Default select first item
@@ -120,6 +125,7 @@ impl App {
             theme,
             symbols,
             notification_manager,
+            settings,
         }
     }
 

@@ -47,7 +47,8 @@ async fn refresh_events(app: &mut App, tx: mpsc::Sender<AppEvent>) {
     for cal in &calendars_to_fetch {
         if let Ok(events) = crate::db::get_events(&app.db_pool, &cal.calendar.id).await {
              let color = cal.color;
-             all_events.extend(events.into_iter().map(|event| ColorEvent { event, color }));
+             let icon = cal.icon.clone();
+             all_events.extend(events.into_iter().map(|event| ColorEvent { event, color, icon: icon.clone() }));
         }
     }
     
@@ -105,7 +106,8 @@ async fn refresh_events(app: &mut App, tx: mpsc::Sender<AppEvent>) {
                         error!("Failed to save events to DB: {}", e);
                     }
                     let color = calendars[i].color;
-                    fetched_events.extend(events.into_iter().map(|event| ColorEvent { event, color }));
+                    let icon = calendars[i].icon.clone();
+                    fetched_events.extend(events.into_iter().map(|event| ColorEvent { event, color, icon: icon.clone() }));
                 }
                 Err(e) => error!("Error fetching events: {}", e),
             }

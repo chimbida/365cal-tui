@@ -39,15 +39,13 @@ impl Default for Symbols {
 
 impl Symbols {
     pub fn from_string(name: &str, custom_fonts: &Option<HashMap<String, ConfigSymbols>>) -> Self {
-        let name_lower = name.to_lowercase();
-
         if let Some(fonts) = custom_fonts {
-            if let Some(custom) = fonts.get(&name_lower) {
+            if let Some(custom) = fonts.get(name) {
                 return Self::from_config(custom);
             }
         }
 
-        match name_lower.as_str() {
+        match name.to_lowercase().as_str() {
             "unicode" => Self::unicode(),
             "ascii" => Self::ascii(),
             _ => Self::nerd_font(),

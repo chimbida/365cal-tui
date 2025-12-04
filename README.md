@@ -151,11 +151,20 @@ This is the most important part! To allow the app to access your calendar, you m
     # up_arrow = "▲"
     # down_arrow = "▼"
 
-    # Or define a custom font set
     # [custom_fonts.my_font]
     # calendar = "C"
     # clock = "T"
     # ...
+
+    # Override calendar icon and color by name (Name Match - Case Insensitive)
+    # [calendar_overrides."My Calendar"]
+    # icon = "📅"
+    # color = "#FF0000"
+
+    # You can also customize special views:
+    # [calendar_overrides."All Calendars"]
+    # icon = "🌎"
+    # color = "#00FF00"
     ```
 
 ### 🎨 Themes & Customization
